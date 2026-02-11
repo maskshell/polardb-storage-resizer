@@ -1,0 +1,258 @@
+# =============================================================================
+# PolarDB Storage Resizer - Helm Values
+# =============================================================================
+# Default values for polardb-storage-resizer.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Global Settings
+# -----------------------------------------------------------------------------
+global:
+  # Override the namespace (default: release namespace)
+  namespaceOverride: ""
+
+# -----------------------------------------------------------------------------
+# CronJob Configuration
+# -----------------------------------------------------------------------------
+cronjob:
+  # Cron schedule (default: daily at 02:00 UTC)
+  schedule: "0 2 * * *"
+
+  # CronJob annotations
+  annotations: {}
+
+  # Timezone for schedule (requires Kubernetes 1.27+)
+  # Default is set in the template to "Asia/Shanghai"
+  # timezone: ""
+
+  # Prevent concurrent executions
+  concurrencyPolicy: Forbid
+
+  # Number of successful/failed jobs to keep
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+
+  # Deadline for starting job if it misses scheduled time
+  startingDeadlineSeconds: 300
+
+  # Job timeout in seconds (default: 1 hour)
+  activeDeadlineSeconds: 3600
+
+  # Pod retry on failure (application handles retries internally)
+  backoffLimit: 0
+
+  # Clean up finished jobs after this many seconds (default: 7 days)
+  ttlSecondsAfterFinished: 604800
+
+  # Suspend the cronjob (set to true to disable scheduled runs)
+  suspend: false
+
+# -----------------------------------------------------------------------------
+# Application Configuration
+# -----------------------------------------------------------------------------
+config:
+  # Run mode: "dry-run" (no actual changes) or "apply" (make changes)
+  runMode: "dry-run"
+
+  # Target regions (comma-separated)
+  regions: "cn-hangzhou"
+
+  # Log level: DEBUG, INFO, WARNING, ERROR
+  logLevel: "INFO"
+
+  # Storage buffer percentage (must be > 100)
+  # Default: 105 means target = used * 1.05
+  bufferPercent: 105
+
+  # Cluster whitelist (comma-separated, optional)
+  # If set, only these clusters will be processed
+  clusterWhitelist: ""
+  # clusterWhitelist: "pc-xxx,pc-yyy,pc-zzz"
+
+  # Cluster blacklist (comma-separated, optional)
+  # Clusters to exclude (takes priority over whitelist)
+  clusterBlacklist: ""
+  # clusterBlacklist: "pc-exclude-xxx"
+
+  # Cluster tag filters (key:value format, optional)
+  # Filter clusters by tags, e.g. 'env:production,team:dba'
+  clusterTagFilters: ""
+  # clusterTagFilters: "env:production"
+
+  # Maximum parallel API requests
+  maxParallelRequests: 5
+
+  # Maximum QPS for cloud API calls
+  maxQps: 10
+
+  # API timeout settings (seconds)
+  apiConnectTimeout: 5
+  apiReadTimeout: 30
+
+  # Safety thresholds
+  maxExpandRatio: 2.0      # Max expansion ratio (target/current)
+  maxShrinkRatio: 0.5      # Min shrink ratio (target/current)
+  maxSingleChangeGb: 1000  # Max single change in GB
+  minChangeThresholdGb: 10 # Minimum change threshold in GB
+
+  # Retry configuration
+  retryMaxAttempts: 3
+  retryBackoffBase: 1.0
+  retryBackoffMax: 30.0
+
+  # Metrics
+  metricsEnabled: true
+
+# -----------------------------------------------------------------------------
+# RRSA (RAM Role for Service Account) Configuration
+# Reference: https://help.aliyun.com/zh/ack/serverless-kubernetes/user-guide/use-rrsa-to-authorize-pods-to-access-different-cloud-services
+# -----------------------------------------------------------------------------
+rrsa:
+  # Enable RRSA authentication
+  enabled: true
+
+  # RAM Role name (required when RRSA is enabled)
+  # Just the role name, NOT the full ARN
+  # Example: PolardbResizerRole (not acs:ram::xxx:role/PolardbResizerRole)
+  roleName: ""
+
+# -----------------------------------------------------------------------------
+# Container Image Configuration
+# -----------------------------------------------------------------------------
+image:
+  # Container image repository (REQUIRED — set to your registry path)
+  repository: ""
+
+  # Image tag (defaults to .Chart.appVersion if not set)
+  tag: ""
+
+  # Image pull policy
+  pullPolicy: Always
+
+  # Image pull secrets for private registries
+  pullSecrets: []
+  # - name: registry-secret
+
+# -----------------------------------------------------------------------------
+# Resource Configuration
+# -----------------------------------------------------------------------------
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+
+# -----------------------------------------------------------------------------
+# Security Configuration
+# -----------------------------------------------------------------------------
+securityContext:
+  # Pod-level security context
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+containerSecurityContext:
+  # Container-level security context
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+# -----------------------------------------------------------------------------
+# ServiceAccount Configuration
+# -----------------------------------------------------------------------------
+serviceAccount:
+  # Create a service account
+  create: true
+
+  # Service account name (defaults to release name)
+  name: ""
+
+  # Annotations to add to the service account
+  annotations: {}
+
+  # Labels to add to the service account
+  labels: {}
+
+# -----------------------------------------------------------------------------
+# Pod Configuration
+# -----------------------------------------------------------------------------
+pod:
+  # Pod labels
+  labels: {}
+
+  # Pod annotations
+  annotations: {}
+
+  # Termination grace period
+  terminationGracePeriodSeconds: 60
+
+  # Node selector
+  nodeSelector: {}
+
+  # Tolerations
+  tolerations: []
+
+  # Affinity
+  affinity: {}
+
+  # Topology spread constraints
+  topologySpreadConstraints: []
+
+  # Priority class name
+  priorityClassName: ""
+
+  # Runtime class name
+  runtimeClassName: ""
+
+  # DNS policy
+  dnsPolicy: ClusterFirst
+
+  # Host network
+  hostNetwork: false
+
+# -----------------------------------------------------------------------------
+# Extra Configuration
+# -----------------------------------------------------------------------------
+# Extra environment variables
+extraEnv: []
+# - name: MY_VAR
+#   value: "my-value"
+
+# Extra environment variables from ConfigMap or Secret
+extraEnvFrom: []
+# - configMapRef:
+#     name: my-configmap
+# - secretRef:
+#     name: my-secret
+
+# Extra volumes
+extraVolumes: []
+# - name: my-volume
+#   configMap:
+#     name: my-configmap
+
+# Extra volume mounts
+extraVolumeMounts: []
+# - name: my-volume
+#   mountPath: /etc/my-config
+
+# Extra init containers
+extraInitContainers: []
+# - name: init-container
+#   image: busybox
+#   command: ['sh', '-c', 'echo "init"']
+
+# Extra sidecar containers
+extraContainers: []
+# - name: sidecar
+#   image: busybox
+#   command: ['sh', '-c', 'sleep infinity']

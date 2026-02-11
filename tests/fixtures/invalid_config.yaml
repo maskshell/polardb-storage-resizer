@@ -1,0 +1,21 @@
+# PolarDB Storage Resizer - Invalid Configuration
+# This file contains various invalid configurations for testing validation
+
+# Invalid: missing required 'regions' field
+run_mode: apply
+
+# Invalid: negative max_qps
+max_qps: -5
+
+# Invalid: max_expand_ratio < 1
+safety:
+  max_expand_ratio: 0.5
+  max_shrink_ratio: 1.5  # Invalid: shrink ratio > 1
+  max_single_change_gb: -100  # Invalid: negative
+  min_change_threshold_gb: -10  # Invalid: negative
+
+# Invalid: retry attempts = 0
+retry:
+  max_attempts: 0
+  backoff_base: -1.0  # Invalid: negative
+  backoff_max: 0  # Invalid: zero

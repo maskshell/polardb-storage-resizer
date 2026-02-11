@@ -1,0 +1,40 @@
+# PolarDB Storage Resizer - Sample Configuration
+# This is a valid configuration file for testing purposes
+
+# Run mode: 'dry-run' (no actual changes) or 'apply' (make changes)
+run_mode: dry-run
+
+# Target regions (list of Alibaba Cloud region IDs)
+regions:
+  - cn-hangzhou
+  - cn-beijing
+
+# Logging configuration
+log_level: DEBUG
+metrics_enabled: true
+
+# Concurrency settings
+max_parallel_requests: 5
+max_qps: 10
+
+# Buffer percentage (target = ceil(A * buffer_percent/100))
+# Default is 105 (1.05x buffer), can be adjusted
+buffer_percent: 105
+
+# Safety thresholds
+safety:
+  max_expand_ratio: 2.0      # Maximum 2x expansion in single run
+  max_shrink_ratio: 0.5      # Maximum 50% reduction in single run
+  max_single_change_gb: 1000 # Maximum single change in GB
+  min_change_threshold_gb: 10 # Skip changes smaller than this
+
+# Retry configuration
+retry:
+  max_attempts: 3
+  backoff_base: 1.0  # Base seconds for exponential backoff
+  backoff_max: 30.0  # Maximum backoff seconds
+
+# Cluster filtering (optional)
+cluster_whitelist: []  # If set, only these clusters are processed
+cluster_blacklist: []  # Clusters to exclude (takes priority over whitelist)
+cluster_tag_filters: {}

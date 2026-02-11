@@ -1,0 +1,82 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your PolarDB Storage Resizer CronJob has been deployed.
+
+================================================================================
+Configuration Summary
+================================================================================
+
+Namespace:        {{ include "polardb-resizer.namespace" . }}
+CronJob Name:     {{ include "polardb-resizer.fullname" . }}
+Schedule:         {{ .Values.cronjob.schedule }}
+Timezone:         {{ .Values.cronjob.timezone | default "Asia/Shanghai" }} (requires Kubernetes 1.27+)
+Run Mode:         {{ .Values.config.runMode }}
+Target Regions:   {{ .Values.config.regions }}
+RRSA Enabled:     {{ .Values.rrsa.enabled }}
+{{- if .Values.rrsa.enabled }}
+RRSA Role Name:   {{ .Values.rrsa.roleName }}
+{{- end }}
+
+================================================================================
+Important Notes
+================================================================================
+
+1. Run Mode
+   {{- if eq .Values.config.runMode "dry-run" }}
+   WARNING: Currently running in DRY-RUN mode. No actual changes will be made.
+   To enable actual changes, set config.runMode to "apply":
+
+     helm upgrade {{ .Release.Name }} ./charts/polardb-storage-resizer --set config.runMode=apply
+   {{- else }}
+   Running in APPLY mode. Storage changes WILL be made to your PolarDB clusters.
+   {{- end }}
+
+2. RRSA Configuration
+   {{- if .Values.rrsa.enabled }}
+   {{- if .Values.rrsa.roleName }}
+   RRSA is configured with role: {{ .Values.rrsa.roleName }}
+   {{- else }}
+   WARNING: RRSA is enabled but no roleName is configured. Please set rrsa.roleName.
+   {{- end }}
+   {{- else }}
+   Note: RRSA is disabled. The application will use AccessKey credentials if available.
+   {{- end }}
+
+================================================================================
+Useful Commands
+================================================================================
+
+# Check CronJob status
+kubectl get cronjob -n {{ include "polardb-resizer.namespace" . }} {{ include "polardb-resizer.fullname" . }}
+
+# Trigger a manual run
+kubectl create job --from=cronjob/{{ include "polardb-resizer.fullname" . }} -n {{ include "polardb-resizer.namespace" . }} manual-run-$(date +%s)
+
+# View job logs
+kubectl logs -n {{ include "polardb-resizer.namespace" . }} -l app.kubernetes.io/name={{ include "polardb-resizer.name" . }} --tail=100
+
+# List recent jobs
+kubectl get jobs -n {{ include "polardb-resizer.namespace" . }} -l app.kubernetes.io/name={{ include "polardb-resizer.name" . }}
+
+================================================================================
+RAM Policy Required
+================================================================================
+
+Ensure your RAM Role has the following permissions:
+
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "polardb:DescribeDBClusters",
+        "polardb:DescribeDBClusterAttribute",
+        "polardb:ModifyDBClusterStorageSpace"
+      ],
+      "Resource": ["*"]
+    }
+  ]
+}
+
+================================================================================

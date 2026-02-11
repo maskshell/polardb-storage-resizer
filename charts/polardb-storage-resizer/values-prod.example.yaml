@@ -1,0 +1,94 @@
+# =============================================================================
+# PolarDB Storage Resizer - Production Values Example
+# =============================================================================
+# THIS IS AN EXAMPLE FILE. Do NOT use it directly in production.
+#
+# Copy this file and customize for your environment:
+#   cp values-prod.example.yaml my-values.yaml
+#   # IMPORTANT: Set config.runMode to "apply" for production!
+#   helm install polardb-resizer ./charts/polardb-storage-resizer -f my-values.yaml
+# =============================================================================
+
+# CronJob schedule (default: daily at 02:00 Beijing Time)
+cronjob:
+  schedule: "0 2 * * *"
+  # Default timezone is "Asia/Shanghai" (set in template)
+  # Override with a different timezone if needed:
+  # timezone: "UTC"  # Requires Kubernetes 1.27+
+
+# Application configuration
+config:
+  # IMPORTANT: Change to "apply" for production
+  runMode: "dry-run"
+
+  # Target regions (comma-separated)
+  regions: "cn-hangzhou,cn-beijing"
+
+  # Log level
+  logLevel: "INFO"
+
+  # Storage buffer percentage (must be > 100)
+  # Default: 105 means target = used * 1.05
+  bufferPercent: 105
+
+  # Cluster whitelist (optional, comma-separated)
+  # If not set, all prepaid running clusters will be processed
+  clusterWhitelist: ""
+
+  # Cluster blacklist (optional, comma-separated)
+  # Takes priority over whitelist
+  clusterBlacklist: ""
+
+  # Cluster tag filters (optional, key:value format)
+  # Filter clusters by tags, e.g. 'env:production,team:dba'
+  clusterTagFilters: ""
+
+  # API timeout settings (seconds)
+  apiConnectTimeout: 5
+  apiReadTimeout: 30
+
+  # Safety thresholds - adjust based on your requirements
+  maxExpandRatio: 2.0
+  maxShrinkRatio: 0.5
+  maxSingleChangeGb: 1000
+  minChangeThresholdGb: 10
+
+  # Performance settings
+  maxParallelRequests: 5
+  maxQps: 10
+
+  # Retry configuration
+  retryMaxAttempts: 3
+  retryBackoffBase: 1.0
+  retryBackoffMax: 30.0
+
+  # Metrics
+  metricsEnabled: true
+
+# RRSA configuration (required for production)
+# Reference: https://help.aliyun.com/zh/ack/serverless-kubernetes/user-guide/use-rrsa-to-authorize-pods-to-access-different-cloud-services
+rrsa:
+  enabled: true
+  # RAM Role name (just the name, NOT the full ARN)
+  # Example: PolardbResizerRole (not acs:ram::xxx:role/PolardbResizerRole)
+  roleName: "PolardbStorageResizerRole"
+
+# Container image
+image:
+  # Replace with your registry
+  repository: "your-registry.example.com/polardb-storage-resizer"
+  tag: ""  # Defaults to .Chart.appVersion
+  pullPolicy: Always
+
+  # Image pull secrets (if using private registry)
+  pullSecrets: []
+  # - name: registry-secret
+
+# Resource limits
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"

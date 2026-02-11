@@ -1,0 +1,184 @@
+# =============================================================================
+# PolarDB Storage Resizer - Kubernetes CronJob
+# =============================================================================
+# This CronJob automatically adjusts PolarDB prepaid storage size daily at 02:00.
+# It uses RSSA (RAM Role for Service Account) for cloud API authentication.
+#
+# Prerequisites:
+# 1. ServiceAccount 'polardb-resizer-sa' must be created with RSSA binding
+# 2. RAM Role must be configured with required permissions (see below)
+# 3. Container image must be built and pushed to registry
+#
+# RAM Policy Required (bind to the RAM Role):
+# -----------------------------------------------------------------------------
+# {
+#   "Version": "1",
+#   "Statement": [
+#     {
+#       "Effect": "Allow",
+#       "Action": [
+#         "polardb:ModifyDBClusterStorageSpace",
+#         "polardb:DescribeDBClusterAttribute",
+#         "polardb:DescribeDBClusters"
+#       ],
+#       "Resource": ["*"]
+#     }
+#   ]
+# }
+# -----------------------------------------------------------------------------
+#
+# Note: Replace placeholder values (namespace, image, etc.) before deployment.
+# =============================================================================
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: polardb-storage-resizer
+  namespace: default  # Change to your target namespace
+  labels:
+    app.kubernetes.io/name: polardb-storage-resizer
+    app.kubernetes.io/component: cronjob
+    app.kubernetes.io/part-of: polardb-automation
+  annotations:
+    description: "Daily PolarDB storage resize job - adjusts prepaid storage to match usage"
+spec:
+  # Schedule: Run daily at 02:00 Beijing Time (Asia/Shanghai)
+  # Requires Kubernetes 1.27+ for timeZone support
+  schedule: "0 2 * * *"
+  timeZone: "Asia/Shanghai"
+
+  # Prevent concurrent executions - if previous job is still running, skip this one
+  concurrencyPolicy: Forbid
+
+  # Keep history for debugging (successful: 3, failed: 3)
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+
+  # Don't start missed jobs if the cron job was suspended
+  startingDeadlineSeconds: 300
+
+  jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: polardb-storage-resizer
+        app.kubernetes.io/component: job
+      annotations:
+        # Prometheus scraping (optional)
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      # Job timeout - fail if running longer than 1 hour
+      activeDeadlineSeconds: 3600
+
+      # Clean up completed jobs after 7 days
+      ttlSecondsAfterFinished: 604800
+
+      # Retry configuration
+      backoffLimit: 0  # No automatic retries at Job level (handled within application)
+
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: polardb-storage-resizer
+        spec:
+          # ServiceAccount with RSSA binding for cloud API access
+          serviceAccountName: polardb-resizer-sa
+
+          # Don't restart on failure - let CronJob handle scheduling
+          restartPolicy: Never
+
+          # Security context
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+
+          # Graceful termination period
+          terminationGracePeriodSeconds: 60
+
+          containers:
+            - name: resizer
+              # Replace with your actual image registry and tag
+              image: your-registry.example.com/polardb-storage-resizer:latest
+              imagePullPolicy: Always
+
+              # Container security
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+
+              # Environment variables for application configuration
+              env:
+                # Run mode: 'dry-run' (no actual changes) or 'apply' (make changes)
+                - name: RUN_MODE
+                  value: "dry-run"  # Change to 'apply' in production
+
+                # Target regions (comma-separated)
+                - name: REGIONS
+                  value: "cn-hangzhou,cn-beijing"
+
+                # Log level: DEBUG, INFO, WARNING, ERROR
+                - name: LOG_LEVEL
+                  value: "INFO"
+
+                # Maximum parallel API requests
+                - name: MAX_PARALLEL_REQUESTS
+                  value: "5"
+
+                # Maximum QPS for cloud API calls (rate limiting)
+                - name: MAX_QPS
+                  value: "10"
+
+                # Safety thresholds
+                - name: MAX_EXPAND_RATIO
+                  value: "2.0"
+
+                - name: MAX_SHRINK_RATIO
+                  value: "0.5"
+
+                - name: MAX_SINGLE_CHANGE_GB
+                  value: "1000"
+
+                - name: MIN_CHANGE_THRESHOLD_GB
+                  value: "10"
+
+                # Retry configuration
+                - name: RETRY_MAX_ATTEMPTS
+                  value: "3"
+
+                - name: RETRY_BACKOFF_BASE
+                  value: "1.0"
+
+                - name: RETRY_BACKOFF_MAX
+                  value: "30.0"
+
+                # Metrics enabled (for Prometheus)
+                - name: METRICS_ENABLED
+                  value: "true"
+
+              # Resource limits
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
+
+              # Volume mounts
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: cache
+                  mountPath: /var/cache/resizer
+
+          # Volumes
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: cache
+              emptyDir: {}

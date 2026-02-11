@@ -1,0 +1,212 @@
+{{/*
+PolarDB Storage Resizer - CronJob Template
+*/}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "polardb-resizer.fullname" . }}
+  namespace: {{ include "polardb-resizer.namespace" . }}
+  labels:
+    {{- include "polardb-resizer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cronjob
+  {{- with .Values.cronjob.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  schedule: {{ .Values.cronjob.schedule | quote }}
+  timeZone: {{ .Values.cronjob.timezone | default "Asia/Shanghai" | quote }}
+  concurrencyPolicy: {{ .Values.cronjob.concurrencyPolicy | quote }}
+  successfulJobsHistoryLimit: {{ .Values.cronjob.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.cronjob.failedJobsHistoryLimit }}
+  startingDeadlineSeconds: {{ .Values.cronjob.startingDeadlineSeconds }}
+  {{- if .Values.cronjob.suspend }}
+  suspend: true
+  {{- end }}
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "polardb-resizer.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: job
+      annotations:
+        {{- with .Values.pod.annotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      activeDeadlineSeconds: {{ .Values.cronjob.activeDeadlineSeconds }}
+      {{- if .Values.cronjob.ttlSecondsAfterFinished }}
+      ttlSecondsAfterFinished: {{ .Values.cronjob.ttlSecondsAfterFinished }}
+      {{- end }}
+      backoffLimit: {{ .Values.cronjob.backoffLimit }}
+      template:
+        metadata:
+          labels:
+            {{- include "polardb-resizer.selectorLabels" . | nindent 12 }}
+            {{- with .Values.pod.labels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            {{- with .Values.pod.annotations }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        spec:
+          serviceAccountName: {{ include "polardb-resizer.serviceAccountName" . }}
+          restartPolicy: Never
+
+          {{- with .Values.pod.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+          {{- with .Values.pod.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+          {{- with .Values.pod.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+          {{- with .Values.pod.topologySpreadConstraints }}
+          topologySpreadConstraints:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+          {{- if .Values.pod.priorityClassName }}
+          priorityClassName: {{ .Values.pod.priorityClassName }}
+          {{- end }}
+
+          {{- if .Values.pod.runtimeClassName }}
+          runtimeClassName: {{ .Values.pod.runtimeClassName }}
+          {{- end }}
+
+          {{- if .Values.pod.hostNetwork }}
+          hostNetwork: {{ .Values.pod.hostNetwork }}
+          {{- end }}
+
+          {{- if .Values.pod.dnsPolicy }}
+          dnsPolicy: {{ .Values.pod.dnsPolicy }}
+          {{- end }}
+
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+
+          terminationGracePeriodSeconds: {{ .Values.pod.terminationGracePeriodSeconds }}
+
+          {{- with .Values.image.pullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+          {{- with .Values.extraInitContainers }}
+          initContainers:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+          containers:
+            - name: resizer
+              image: {{ include "polardb-resizer.image" . }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+              securityContext:
+                {{- toYaml .Values.containerSecurityContext | nindent 16 }}
+
+              env:
+                # Application configuration
+                - name: RUN_MODE
+                  value: {{ .Values.config.runMode | quote }}
+
+                - name: REGIONS
+                  value: {{ .Values.config.regions | quote }}
+
+                - name: LOG_LEVEL
+                  value: {{ .Values.config.logLevel | quote }}
+
+                - name: BUFFER_PERCENT
+                  value: {{ .Values.config.bufferPercent | quote }}
+
+                {{- if .Values.config.clusterWhitelist }}
+                - name: CLUSTER_WHITELIST
+                  value: {{ .Values.config.clusterWhitelist | quote }}
+                {{- end }}
+
+                {{- if .Values.config.clusterBlacklist }}
+                - name: CLUSTER_BLACKLIST
+                  value: {{ .Values.config.clusterBlacklist | quote }}
+                {{- end }}
+
+                {{- if .Values.config.clusterTagFilters }}
+                - name: CLUSTER_TAG_FILTERS
+                  value: {{ .Values.config.clusterTagFilters | quote }}
+                {{- end }}
+
+                - name: MAX_PARALLEL_REQUESTS
+                  value: {{ .Values.config.maxParallelRequests | quote }}
+
+                - name: MAX_QPS
+                  value: {{ .Values.config.maxQps | quote }}
+
+                - name: MAX_EXPAND_RATIO
+                  value: {{ .Values.config.maxExpandRatio | quote }}
+
+                - name: MAX_SHRINK_RATIO
+                  value: {{ .Values.config.maxShrinkRatio | quote }}
+
+                - name: MAX_SINGLE_CHANGE_GB
+                  value: {{ .Values.config.maxSingleChangeGb | quote }}
+
+                - name: MIN_CHANGE_THRESHOLD_GB
+                  value: {{ .Values.config.minChangeThresholdGb | quote }}
+
+                - name: RETRY_MAX_ATTEMPTS
+                  value: {{ .Values.config.retryMaxAttempts | quote }}
+
+                - name: RETRY_BACKOFF_BASE
+                  value: {{ .Values.config.retryBackoffBase | quote }}
+
+                - name: RETRY_BACKOFF_MAX
+                  value: {{ .Values.config.retryBackoffMax | quote }}
+
+                - name: METRICS_ENABLED
+                  value: {{ .Values.config.metricsEnabled | quote }}
+
+                - name: API_CONNECT_TIMEOUT
+                  value: {{ .Values.config.apiConnectTimeout | quote }}
+
+                - name: API_READ_TIMEOUT
+                  value: {{ .Values.config.apiReadTimeout | quote }}
+
+                {{- with .Values.extraEnv }}
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
+
+              {{- with .Values.extraEnvFrom }}
+              envFrom:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}
+
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: cache
+                  mountPath: /var/cache/resizer
+                {{- with .Values.extraVolumeMounts }}
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
+
+            {{- with .Values.extraContainers }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: cache
+              emptyDir: {}
+            {{- with .Values.extraVolumes }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
