@@ -6,7 +6,7 @@
 
 - [前置条件](#前置条件)
 - [快速部署](#快速部署)
-- [RSSA/RRSA 配置](#rssarssa-配置)
+- [RSSA/RRSA 配置](#rssarrsa-配置)
 - [配置说明](#配置说明)
 - [监控与日志](#监控与日志)
 - [故障排查](#故障排查)
@@ -142,7 +142,7 @@ RRSA (RAM Roles for Service Accounts) 是阿里云 ACK 提供的功能，允许 
 **重要参数说明：**
 
 | 参数 | 说明 |
-|------|------|
+| --- | --- |
 | `oidc:sub` | 格式为 `system:serviceaccount:<namespace>:<serviceaccount-name>` |
 | `Federated` | OIDC 提供者 ARN，可在 ACK 集群详情页获取 |
 
@@ -170,7 +170,7 @@ RRSA (RAM Roles for Service Accounts) 是阿里云 ACK 提供的功能，允许 
 **权限说明：**
 
 | Action | 用途 |
-|--------|------|
+| --- | --- |
 | `polardb:DescribeDBClusters` | 列出区域内的 PolarDB 集群 |
 | `polardb:DescribeDBClusterAttribute` | 获取集群详细信息（包括存储使用量） |
 | `polardb:ModifyDBClusterStorageSpace` | 修改集群存储空间大小 |
@@ -250,7 +250,7 @@ resource "alicloud_ram_role_policy_attachment" "attach" {
 ### 环境变量配置
 
 | 变量名 | 必填 | 默认值 | 说明 |
-|--------|------|--------|------|
+| --- | --- | --- | --- |
 | `RUN_MODE` | 是 | `dry-run` | 运行模式 |
 | `REGIONS` | 是 | - | 目标区域列表 |
 | `LOG_LEVEL` | 否 | `INFO` | 日志级别 |
@@ -335,7 +335,7 @@ kubectl logs job/polardb-storage-resizer-28572960 -n polardb-resizer
 
 日志输出包含 Trace ID 用于追踪：
 
-```
+```text
 INFO [550e8400-e29b-41d4-a716-446655440000]: Starting PolarDB Storage Resizer
 INFO [550e8400-e29b-41d4-a716-446655440000]: Discovered 10 total clusters
 INFO [550e8400-e29b-41d4-a716-446655440000]: Selected 3 target clusters
@@ -404,7 +404,7 @@ kubectl describe pod -l app.kubernetes.io/name=polardb-storage-resizer -n polard
 ### 退出码说明
 
 | 退出码 | 含义 | 处理建议 |
-|--------|------|----------|
+| --- | --- | --- |
 | 0 | 成功 | 无需处理 |
 | 1 | 部分失败 | 检查日志中的错误详情 |
 | 2 | 配置错误 | 检查环境变量配置 |
@@ -471,7 +471,7 @@ env:
 程序会根据集群的存储类型自动应用对应的最小和最大存储限制：
 
 | 存储类型 | 最小存储 | 最大存储 |
-|---------|---------|---------|
+| --- | --- | --- |
 | `psl5` / `psl4` | 10 GB | 500 TB |
 | `essdpl0` | 20 GB | 32 TB |
 | `essdpl1` / `essdpl2` / `essdpl3` / `essdautopl` | 20/470/1270/40 GB | 64 TB |
