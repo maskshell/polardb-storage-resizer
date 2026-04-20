@@ -5,7 +5,7 @@ This module provides:
 - AppConfig: Application configuration dataclass
 - Configuration loading from environment variables and YAML files
 - Startup validation (fail-fast for configuration errors)
-- RSSA credential validation
+- RRSA credential validation
 """
 
 from __future__ import annotations
@@ -108,7 +108,7 @@ class AppConfig:
         - CLUSTER_TAG_FILTERS -> cluster_tag_filters (key:value pairs, comma-separated)
         - API_CONNECT_TIMEOUT -> api_connect_timeout
         - API_READ_TIMEOUT -> api_read_timeout
-        - ALIBABA_CLOUD_ROLE_ARN / ALIBABA_CLOUD_ECI_ROLE_ARN -> RSSA validation
+        - ALIBABA_CLOUD_ROLE_ARN / ALIBABA_CLOUD_ECI_ROLE_ARN -> RRSA validation
 
         Returns:
             AppConfig instance with values from environment
@@ -427,12 +427,12 @@ class AppConfig:
 
         return errors
 
-    def validate_rssa(self) -> tuple[bool, str]:
+    def validate_rrsa(self) -> tuple[bool, str]:
         """
         Validate credentials for apply mode.
 
         In apply mode, one of the following credential types must be present:
-        - RSSA: ALIBABA_CLOUD_ROLE_ARN or ALIBABA_CLOUD_ECI_ROLE_ARN
+        - RRSA: ALIBABA_CLOUD_ROLE_ARN or ALIBABA_CLOUD_ECI_ROLE_ARN
           (for K8s production)
         - AccessKey: ALIBABA_CLOUD_ACCESS_KEY_ID +
           ALIBABA_CLOUD_ACCESS_KEY_SECRET (for local testing)
@@ -447,15 +447,15 @@ class AppConfig:
         access_key_id = os.environ.get("ALIBABA_CLOUD_ACCESS_KEY_ID")
         access_key_secret = os.environ.get("ALIBABA_CLOUD_ACCESS_KEY_SECRET")
 
-        has_rssa = bool(role_arn or eci_role_arn)
+        has_rrsa = bool(role_arn or eci_role_arn)
         has_access_key = bool(access_key_id and access_key_secret)
 
         if self.run_mode == "apply":
-            if not has_rssa and not has_access_key:
+            if not has_rrsa and not has_access_key:
                 return (
                     False,
                     "Credentials required in apply mode. "
-                    "Set RSSA (ALIBABA_CLOUD_ROLE_ARN) for production, "
+                    "Set RRSA (ALIBABA_CLOUD_ROLE_ARN) for production, "
                     "or AccessKey (ALIBABA_CLOUD_ACCESS_KEY_ID + "
                     "ALIBABA_CLOUD_ACCESS_KEY_SECRET) for local testing.",
                 )
@@ -479,9 +479,9 @@ class AppConfig:
                 errors=errors,
             )
 
-        is_valid, error_message = self.validate_rssa()
+        is_valid, error_message = self.validate_rrsa()
         if not is_valid:
             raise ValidationError(
                 message=error_message,
-                field="rssa",
+                field="rrsa",
             )

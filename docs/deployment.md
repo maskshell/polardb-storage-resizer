@@ -6,7 +6,7 @@
 
 - [前置条件](#前置条件)
 - [快速部署](#快速部署)
-- [RSSA/RRSA 配置](#rssarrsa-配置)
+- [RRSA 配置](#rrsa-配置)
 - [配置说明](#配置说明)
 - [监控与日志](#监控与日志)
 - [故障排查](#故障排查)
@@ -46,9 +46,9 @@ docker push ghcr.io/maskshell/polardb-storage-resizer:v1.0.0
 kubectl create namespace dba
 ```
 
-### 步骤 2：配置 RSSA
+### 步骤 2：配置 RRSA
 
-在部署 ServiceAccount 之前，需要先修改 `k8s/serviceaccount-rssa.yaml` 中的角色名称：
+在部署 ServiceAccount 之前，需要先修改 `k8s/serviceaccount-rrsa.yaml` 中的角色名称：
 
 ```yaml
 annotations:
@@ -59,7 +59,7 @@ annotations:
 然后部署 ServiceAccount：
 
 ```bash
-kubectl apply -f k8s/serviceaccount-rssa.yaml -n dba
+kubectl apply -f k8s/serviceaccount-rrsa.yaml -n dba
 ```
 
 ### 步骤 3：配置 CronJob
@@ -104,9 +104,9 @@ kubectl create job --from=cronjob/polardb-storage-resizer test-run-$(date +%s) -
 kubectl logs -l app.kubernetes.io/name=polardb-storage-resizer -n dba
 ```
 
-## RSSA/RRSA 配置
+## RRSA 配置
 
-### 什么是 RSSA/RRSA？
+### 什么是 RRSA？
 
 RRSA (RAM Roles for Service Accounts) 是阿里云 ACK 提供的功能，允许 Pod 通过 OIDC 联邦获取临时凭证，无需在集群中存储 AccessKey/SecretKey。
 
@@ -158,10 +158,19 @@ RRSA (RAM Roles for Service Accounts) 是阿里云 ACK 提供的功能，允许 
       "Effect": "Allow",
       "Action": [
         "polardb:DescribeDBClusters",
-        "polardb:DescribeDBClusterAttribute",
-        "polardb:ModifyDBClusterStorageSpace"
+        "polardb:DescribeDBClusterAttribute"
       ],
-      "Resource": ["*"]
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "polardb:ModifyDBClusterStorageSpace",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "acs:ResourceTag/auto-resize": ["on"]
+        }
+      }
     }
   ]
 }
@@ -169,15 +178,15 @@ RRSA (RAM Roles for Service Accounts) 是阿里云 ACK 提供的功能，允许 
 
 **权限说明：**
 
-| Action | 用途 |
-| --- | --- |
-| `polardb:DescribeDBClusters` | 列出区域内的 PolarDB 集群 |
-| `polardb:DescribeDBClusterAttribute` | 获取集群详细信息（包括存储使用量） |
-| `polardb:ModifyDBClusterStorageSpace` | 修改集群存储空间大小 |
+| Action | 用途 | 条件 |
+| --- | --- | --- |
+| `polardb:DescribeDBClusters` | 列出区域内的 PolarDB 集群 | 无 |
+| `polardb:DescribeDBClusterAttribute` | 获取集群详细信息（包括存储使用量） | 无 |
+| `polardb:ModifyDBClusterStorageSpace` | 修改集群存储空间大小 | 需集群标签 `auto-resize=on` |
 
 #### 3. 配置 ServiceAccount
 
-更新 `k8s/serviceaccount-rssa.yaml`：
+更新 `k8s/serviceaccount-rrsa.yaml`：
 
 ```yaml
 apiVersion: v1
@@ -228,10 +237,19 @@ resource "alicloud_ram_policy" "polardb_resizer" {
         Effect = "Allow"
         Action = [
           "polardb:DescribeDBClusters",
-          "polardb:DescribeDBClusterAttribute",
-          "polardb:ModifyDBClusterStorageSpace"
+          "polardb:DescribeDBClusterAttribute"
         ]
         Resource = ["*"]
+      },
+      {
+        Effect = "Allow"
+        Action = ["polardb:ModifyDBClusterStorageSpace"]
+        Resource = ["*"]
+        Condition = {
+          StringEquals = {
+            "acs:ResourceTag/auto-resize" = ["on"]
+          }
+        }
       }
     ]
   })

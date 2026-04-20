@@ -100,7 +100,7 @@ uv run python -m polardb_storage_resizer.main
 **注意**：
 
 - AccessKey 方式需要创建具有 PolarDB 只读权限的 RAM 用户
-- 生产部署使用 RSSA，无需 AccessKey
+- 生产部署使用 RRSA，无需 AccessKey
 
 ### 5. 生产部署（apply 模式）
 
@@ -133,7 +133,7 @@ uv run python -m polardb_storage_resizer.main
 | `RETRY_MAX_ATTEMPTS` | 否 | `3` | 最大重试次数 |
 | `RETRY_BACKOFF_BASE` | 否 | `1.0` | 重试退避基数（秒） |
 | `RETRY_BACKOFF_MAX` | 否 | `30.0` | 最大退避时间（秒） |
-| `ALIBABA_CLOUD_ROLE_ARN` | apply 模式必填 | - | RSSA 角色 ARN |
+| `ALIBABA_CLOUD_ROLE_ARN` | apply 模式必填 | - | RRSA 角色 ARN |
 | `CLUSTER_WHITELIST` | 否 | - | 集群白名单，多个用逗号分隔，设置后仅处理白名单内集群 |
 | `CLUSTER_BLACKLIST` | 否 | - | 集群黑名单，多个用逗号分隔，优先级高于白名单 |
 | `CLUSTER_TAG_FILTERS` | 否 | - | 集群标签筛选，格式为 `key1:value1,key2:value2`，仅处理具有所有指定标签的集群 |
@@ -248,8 +248,8 @@ PolarDB 的存储限制与集群的存储类型相关，程序自动根据 `Desc
 # 1. 创建命名空间
 kubectl create namespace dba
 
-# 2. 创建 ServiceAccount（配置 RSSA）
-kubectl apply -f k8s/serviceaccount-rssa.yaml -n dba
+# 2. 创建 ServiceAccount（配置 RRSA）
+kubectl apply -f k8s/serviceaccount-rrsa.yaml -n dba
 
 # 3. 部署 CronJob
 kubectl apply -f k8s/cronjob.yaml -n dba
@@ -326,10 +326,19 @@ kubectl get pods -n dba
       "Effect": "Allow",
       "Action": [
         "polardb:DescribeDBClusters",
-        "polardb:DescribeDBClusterAttribute",
-        "polardb:ModifyDBClusterStorageSpace"
+        "polardb:DescribeDBClusterAttribute"
       ],
       "Resource": ["*"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "polardb:ModifyDBClusterStorageSpace",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "acs:ResourceTag/auto-resize": ["on"]
+        }
+      }
     }
   ]
 }
@@ -375,7 +384,7 @@ tests/
 
 k8s/
 ├── cronjob.yaml           # CronJob 定义
-└── serviceaccount-rssa.yaml # RSSA ServiceAccount
+└── serviceaccount-rrsa.yaml # RRSA ServiceAccount
 ```
 
 ### 运行测试

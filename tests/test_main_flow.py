@@ -175,12 +175,12 @@ class TestExitCodes:
 
         assert exit_code == 2
 
-    def test_exit_2_on_rssa_missing_in_apply(
+    def test_exit_2_on_rrsa_missing_in_apply(
         self,
         isolated_env: dict[str, str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Exit code 2 when RSSA credentials missing in apply mode."""
+        """Exit code 2 when RRSA credentials missing in apply mode."""
         monkeypatch.setenv("RUN_MODE", "apply")
         monkeypatch.setenv("REGIONS", "cn-hangzhou")
         # ALIBABA_CLOUD_ROLE_ARN not set

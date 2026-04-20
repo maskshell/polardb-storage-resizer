@@ -6,7 +6,7 @@ using the Aliyun SDK for Python.
 
 Supported authentication methods:
 1. AccessKey (ALIBABA_CLOUD_ACCESS_KEY_ID + ALIBABA_CLOUD_ACCESS_KEY_SECRET)
-2. RSSA/OIDC (automatic in ACK clusters with RRSA enabled)
+2. RRSA/OIDC (automatic in ACK clusters with RRSA enabled)
 3. RAM Role (ALIBABA_CLOUD_ROLE_ARN for ECS/container environments)
 """
 
@@ -36,7 +36,7 @@ class AliyunPolarDBClient:
 
     This client supports multiple authentication methods:
     - AccessKey: Set ALIBABA_CLOUD_ACCESS_KEY_ID and ALIBABA_CLOUD_ACCESS_KEY_SECRET
-    - RSSA: Automatic when running in ACK with RRSA enabled
+    - RRSA: Automatic when running in ACK with RRSA enabled
     - Role ARN: Set ALIBABA_CLOUD_ROLE_ARN for role assumption
 
     The client automatically detects and uses the appropriate credential provider.
@@ -56,7 +56,7 @@ class AliyunPolarDBClient:
         from alibabacloud_credentials.client import Client as CredClient
 
         # Create credentials client (auto-detects from environment)
-        # Priority: AccessKey > RSSA/OIDC > RAM Role > ECS Role
+        # Priority: AccessKey > RRSA/OIDC > RAM Role > ECS Role
         cred_client = CredClient()
 
         self._cred_client = cred_client

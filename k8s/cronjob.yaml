@@ -2,10 +2,10 @@
 # PolarDB Storage Resizer - Kubernetes CronJob
 # =============================================================================
 # This CronJob automatically adjusts PolarDB prepaid storage size daily at 02:00.
-# It uses RSSA (RAM Role for Service Account) for cloud API authentication.
+# It uses RRSA (RAM Role for Service Account) for cloud API authentication.
 #
 # Prerequisites:
-# 1. ServiceAccount 'polardb-resizer-sa' must be created with RSSA binding
+# 1. ServiceAccount 'polardb-resizer-sa' must be created with RRSA binding
 # 2. RAM Role must be configured with required permissions (see below)
 # 3. Container image must be built and pushed to registry
 #
@@ -81,7 +81,7 @@ spec:
           labels:
             app.kubernetes.io/name: polardb-storage-resizer
         spec:
-          # ServiceAccount with RSSA binding for cloud API access
+          # ServiceAccount with RRSA binding for cloud API access
           serviceAccountName: polardb-resizer-sa
 
           # Don't restart on failure - let CronJob handle scheduling

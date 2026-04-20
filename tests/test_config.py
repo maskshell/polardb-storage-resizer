@@ -6,8 +6,8 @@ This module tests:
 - Required field validation
 - Environment variable override
 - Configuration file loading
-- RSSA fast-fail in apply mode
-- RSSA warning in dry-run mode
+- RRSA fast-fail in apply mode
+- RRSA warning in dry-run mode
 
 GREEN Phase: Tests should pass now that config.py is implemented.
 """
@@ -399,10 +399,10 @@ retry:
         assert config.retry_max_attempts == 3  # Default
 
 
-class TestRSSAFastFail:
-    """Tests for RSSA fast-fail behavior in apply mode."""
+class TestRRSAFastFail:
+    """Tests for RRSA fast-fail behavior in apply mode."""
 
-    def test_apply_mode_requires_rssa_role_arn(
+    def test_apply_mode_requires_rrsa_role_arn(
         self, isolated_env: dict[str, str]
     ) -> None:
         """apply mode should fail fast if ALIBABA_CLOUD_ROLE_ARN is missing."""
@@ -411,19 +411,19 @@ class TestRSSAFastFail:
         # ALIBABA_CLOUD_ROLE_ARN is NOT set
 
         config = AppConfig.from_env()
-        is_valid, error_message = config.validate_rssa()
+        is_valid, error_message = config.validate_rrsa()
 
         assert is_valid is False
-        assert "role" in error_message.lower() or "rssa" in error_message.lower()
+        assert "role" in error_message.lower() or "rrsa" in error_message.lower()
 
-    def test_apply_mode_with_rssa_role_arn(self, isolated_env: dict[str, str]) -> None:
+    def test_apply_mode_with_rrsa_role_arn(self, isolated_env: dict[str, str]) -> None:
         """apply mode should pass validation with ALIBABA_CLOUD_ROLE_ARN set."""
         os.environ["RUN_MODE"] = "apply"
         os.environ["REGIONS"] = "cn-hangzhou"
         os.environ["ALIBABA_CLOUD_ROLE_ARN"] = "acs:ram::123456789:role/TestRole"
 
         config = AppConfig.from_env()
-        is_valid, error_message = config.validate_rssa()
+        is_valid, error_message = config.validate_rrsa()
 
         assert is_valid is True
 
@@ -434,33 +434,33 @@ class TestRSSAFastFail:
         os.environ["ALIBABA_CLOUD_ECI_ROLE_ARN"] = "acs:ram::123456789:role/TestRole"
 
         config = AppConfig.from_env()
-        is_valid, error_message = config.validate_rssa()
+        is_valid, error_message = config.validate_rrsa()
 
         assert is_valid is True
 
 
-class TestRSSADryRunWarning:
-    """Tests for RSSA warning in dry-run mode."""
+class TestRRSADryRunWarning:
+    """Tests for RRSA warning in dry-run mode."""
 
-    def test_dry_run_mode_rssa_optional(self, isolated_env: dict[str, str]) -> None:
-        """dry-run mode should not require RSSA credentials."""
+    def test_dry_run_mode_rrsa_optional(self, isolated_env: dict[str, str]) -> None:
+        """dry-run mode should not require RRSA credentials."""
         os.environ["RUN_MODE"] = "dry-run"
         os.environ["REGIONS"] = "cn-hangzhou"
-        # No RSSA env vars set
+        # No RRSA env vars set
 
         config = AppConfig.from_env()
-        is_valid, error_message = config.validate_rssa()
+        is_valid, error_message = config.validate_rrsa()
 
-        # Should be valid even without RSSA
+        # Should be valid even without RRSA
         assert is_valid is True
 
-    def test_dry_run_mode_rssa_warning(self, isolated_env: dict[str, str]) -> None:
-        """dry-run mode without RSSA should issue a warning (not error)."""
+    def test_dry_run_mode_rrsa_warning(self, isolated_env: dict[str, str]) -> None:
+        """dry-run mode without RRSA should issue a warning (not error)."""
         os.environ["RUN_MODE"] = "dry-run"
         os.environ["REGIONS"] = "cn-hangzhou"
 
         config = AppConfig.from_env()
-        is_valid, _ = config.validate_rssa()
+        is_valid, _ = config.validate_rrsa()
 
         # Should be valid but log a warning
         assert is_valid is True

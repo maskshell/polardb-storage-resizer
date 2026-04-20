@@ -534,5 +534,5 @@ def pytest_configure(config: pytest.Config) -> None:
     )
     config.addinivalue_line("markers", "slow: Slow tests (skip in quick test runs)")
     config.addinivalue_line(
-        "markers", "requires_rssa: Tests that require RSSA credentials"
+        "markers", "requires_rrsa: Tests that require RRSA credentials"
     )

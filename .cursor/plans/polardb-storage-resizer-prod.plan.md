@@ -1,6 +1,6 @@
 ---
 name: polardb-storage-resizer-prod-plan
-overview: Design and implement a production-grade Python service, running as a Kubernetes CronJob, that periodically right-sizes PolarDB prepaid storage using RSSA-based authorization.
+overview: Design and implement a production-grade Python service, running as a Kubernetes CronJob, that periodically right-sizes PolarDB prepaid storage using RRSA-based authorization.
 todos:
   - id: red-conftest-fixtures
     content: 编写 conftest.py 共享 fixture + fixtures/ 测试数据固件
@@ -9,7 +9,7 @@ todos:
     content: 编写 test_errors.py（错误类型序列化、Transient/Permanent 区分、脱敏验证）
     status: completed
   - id: red-config
-    content: 编写 test_config.py（配置加载、启动验证、RSSA fast-fail）
+    content: 编写 test_config.py（配置加载、启动验证、RRSA fast-fail）
     status: completed
   - id: red-strategy
     content: 编写 test_strategy.py（B_target 计算、边界用例 A=0/A=B/A>B、API 约束验证）
@@ -24,7 +24,7 @@ todos:
     content: 编写 test_main_flow.py（集成测试、退出码语义、Trace ID 传播）
     status: completed
   - id: k8s-manifests
-    content: 编写 K8s CronJob 与 RSSA ServiceAccount 示例 YAML
+    content: 编写 K8s CronJob 与 RRSA ServiceAccount 示例 YAML
     status: completed
   - id: green-models-errors-redaction
     content: 实现 models.py + errors.py + redaction.py（基础层）
@@ -63,7 +63,7 @@ todos:
     content: 更新 README（快速开始、本地调试、配置说明）
     status: completed
   - id: docs-deployment
-    content: 编写 docs/deployment.md（K8s 部署指南、RSSA 配置）
+    content: 编写 docs/deployment.md（K8s 部署指南、RRSA 配置）
     status: completed
   - id: feat-tag-filters
     content: 添加集群标签筛选功能（cluster_tag_filters）
@@ -76,7 +76,7 @@ isProject: false
 - **目标**: 实现一个在 Kubernetes 中按日运行的 Python CronJob，按 README 中的策略为 **包年包月 PolarDB 实例** 自动调整预置存储大小，并满足生产级要求：多 Region、可扩展到多账号、可观测、可配置、可安全回滚。
 - **范围**:
   - 单云账号起步，支持多 Region；后续可通过配置扩展多账号。
-  - 使用 RSSA（ServiceAccount 绑定 RAM 角色）获取访问 PolarDB 的临时凭证。
+  - 使用 RRSA（ServiceAccount 绑定 RAM 角色）获取访问 PolarDB 的临时凭证。
   - 严格遵守 **/parallel-dev**：先测后码（RED → GREEN → REFACTOR），测试和实现可并行推进但顺序上必须先定义测试。
 
 ## 高层架构
@@ -85,8 +85,8 @@ isProject: false
 flowchart TD
   cronJob[K8s CronJob] --> podRunner[resizer Pod]
   podRunner --> configLoader[config/env loader]
-  podRunner --> rssaCreds[RSSA credentials]
-  rssaCreds --> aliyunSDK[Aliyun PolarDB client]
+  podRunner --> rrsaCreds[RRSA credentials]
+  rrsaCreds --> aliyunSDK[Aliyun PolarDB client]
   configLoader --> resizerSvc[Resizer service]
   aliyunSDK --> resizerSvc
   resizerSvc --> discovery[Discover target clusters]
@@ -96,8 +96,6 @@ flowchart TD
   resizerSvc --> dryRun[Dry-run & safety checks]
 ```
 
-
-
 - **代码形态**（建议）：
   - 核心代码放在 `[src/polardb_storage_resizer](src/polardb_storage_resizer)`
   - 测试放在 `[tests](tests)`
@@ -105,7 +103,8 @@ flowchart TD
   - K8s 清单放在 `[k8s](k8s)`
   - 设计与实现文档放在 `[docs](docs)`
 - **核心文件结构**：
-  ```text
+
+```text
   src/polardb_storage_resizer/
   ├── __init__.py
   ├── models.py              # 共享数据模型（ClusterSummary, ClusterDetail, ChangePlan 等）
@@ -120,7 +119,9 @@ flowchart TD
   └── main.py                # CLI 入口与主流程
   tests/
   ├── conftest.py            # 共享 fixture、环境隔离、fake client 工厂
-  ```
+  
+
+```
 
 ## 组件设计
 
@@ -137,7 +138,7 @@ flowchart TD
     - `SafetyCheckError`: 安全阈值检查失败
     - `ConcurrentExecutionError`: 检测到并发执行冲突
   - 在 `[src/polardb_storage_resizer/redaction.py](src/polardb_storage_resizer/redaction.py)` 中定义：
-    - `redact_cluster_id(cluster_id)`: 脱敏集群 ID（保留前 8 位 + `****`）
+    - `redact_cluster_id(cluster_id)`: 脱敏集群 ID（保留前 8 位 + `**`**）
     - `redact_error_message(error)`: 清洗 SDK 异常中可能包含的 request/response 敏感信息
   - 在 `[src/polardb_storage_resizer/models.py](src/polardb_storage_resizer/models.py)` 中定义共享数据模型：
     - `ClusterSummary`: 集群摘要
@@ -183,40 +184,44 @@ flowchart TD
   - **启动验证**: 加载配置后立即验证（fail-fast）：
     - 必填字段存在（regions、run_mode 等）
     - 安全阈值合理（`max_single_change_gb > 0`、`min_change_threshold_gb >= 0`）
-    - **RSSA 快速失败**：当 `run_mode=apply` 时，RSSA 环境变量（`ALIBABA_CLOUD_ROLE_ARN` 或 `ALIBABA_CLOUD_ECI_ROLE_ARN`）必须存在，缺失则立即报错退出，而非等到 API 调用时才失败
-    - `dry-run` 模式下 RSSA 变量缺失可降级为警告（允许本地无凭证测试）
+    - **RRSA 快速失败**：当 `run_mode=apply` 时，RRSA 环境变量（`ALIBABA_CLOUD_ROLE_ARN` 或 `ALIBABA_CLOUD_ECI_ROLE_ARN`）必须存在，缺失则立即报错退出，而非等到 API 调用时才失败
+    - `dry-run` 模式下 RRSA 变量缺失可降级为警告（允许本地无凭证测试）
   - **速率限制**: 添加 `max_qps` 配置项，使用令牌桶或简单限流器保护 API 调用。
-  - TDD: 先在 `tests/test_config.py` 编写用例，覆盖：默认值、必填项缺失报错、环境变量覆盖、文件加载失败行为、**启动验证逻辑**、**RSSA apply 模式下 fast-fail**、**dry-run 模式下 RSSA 降级警告**。
+  - TDD: 先在 `tests/test_config.py` 编写用例，覆盖：默认值、必填项缺失报错、环境变量覆盖、文件加载失败行为、**启动验证逻辑**、**RRSA apply 模式下 fast-fail**、**dry-run 模式下 RRSA 降级警告**。
 
 ### 2. 云 API 抽象层
 
 - **目标**: 与具体 SDK/HTTP 接口解耦，便于测试和未来替换实现。`cloud_client` 只负责 API 调用与错误转换，不承载业务规则。
 - **计划**:
-  - 在 `[src/polardb_storage_resizer/cloud_client.py](src/polardb_storage_resizer/cloud_client.py)` 使用 `**typing.Protocol**` 定义接口（结构子类型，避免继承耦合）：
-    ```python
+  - 在 `[src/polardb_storage_resizer/cloud_client.py](src/polardb_storage_resizer/cloud_client.py)` 使用 `**typing.Protocol`** 定义接口（结构子类型，避免继承耦合）：
+
+```python
     class PolarDBClient(Protocol):
         def list_clusters(self, region: str) -> list[ClusterSummary]: ...
         def get_cluster_detail(self, region: str, cluster_id: str) -> ClusterDetail: ...
         def modify_storage(self, region: str, cluster_id: str, new_size_gb: int) -> ModifyResult: ...
-    ```
-  - 数据模型（`ClusterSummary`、`ClusterDetail`、`ModifyResult`）统一定义在 `[src/polardb_storage_resizer/models.py](src/polardb_storage_resizer/models.py)`。
-  - `ClusterDetail` 中至少包含：当前预置存储 `B`、当前已用 `A`、计费模式（过滤出包年包月预置存储）、状态（过滤掉非运行中）。
-  - **待确认字段**（M4 阶段研究）：
-    - 计费类型字段（可能是 `PayType` 或 `StorageType`，包年包月的值可能是 `Prepaid`）
-    - 集群状态字段（可能是 `Status`，运行中的值可能是 `Running`）
-    - 已用存储与预置存储的字段名
-  - **SDK 异常脱敏**：Aliyun SDK 异常信息可能包含 request/response 敏感数据。`AliyunPolarDBClient` 实现中必须：
-    - 捕获 SDK 原始异常
-    - 使用 `redact_error_message()` 清洗敏感信息
-    - 重新包装为 `TransientCloudAPIError` 或 `PermanentCloudAPIError`
-  - **速率限制器**：作为 **decorator/wrapper** 实现（横切关注点解耦），而非内嵌在 client 中，根据 `max_qps` 配置控制请求速率。
-  - **注意**：API 约束验证（最小存储、步长、冷却时间等）属于业务规则，已移至「组件 3 - 策略层」。
-  - 具体实现 `AliyunPolarDBClient` 使用 RSSA 提供的临时凭证，从环境中读取 `ALIBABA_CLOUD_ROLE_ARN` 等信息（详细细节在实现阶段结合官方 SDK 文档确定）。
-  - TDD: 在 `tests/test_cloud_client_contract.py` 中用 fake/in-memory 实现和 `unittest.mock`，验证：
-    - 接口契约（入参与出参类型）。
-    - SDK 异常到 `TransientCloudAPIError` / `PermanentCloudAPIError` 的正确映射。
-    - **脱敏后的错误信息不包含原始 request/response 数据**。
-    - **速率限制器（wrapper）调用次数符合 qps 限制**（使用 `freezegun` 或 mock `time.monotonic` 实现确定性测试）。
+    
+
+```
+
+- 数据模型（`ClusterSummary`、`ClusterDetail`、`ModifyResult`）统一定义在 `[src/polardb_storage_resizer/models.py](src/polardb_storage_resizer/models.py)`。
+- `ClusterDetail` 中至少包含：当前预置存储 `B`、当前已用 `A`、计费模式（过滤出包年包月预置存储）、状态（过滤掉非运行中）。
+- **待确认字段**（M4 阶段研究）：
+  - 计费类型字段（可能是 `PayType` 或 `StorageType`，包年包月的值可能是 `Prepaid`）
+  - 集群状态字段（可能是 `Status`，运行中的值可能是 `Running`）
+  - 已用存储与预置存储的字段名
+- **SDK 异常脱敏**：Aliyun SDK 异常信息可能包含 request/response 敏感数据。`AliyunPolarDBClient` 实现中必须：
+  - 捕获 SDK 原始异常
+  - 使用 `redact_error_message()` 清洗敏感信息
+  - 重新包装为 `TransientCloudAPIError` 或 `PermanentCloudAPIError`
+- **速率限制器**：作为 **decorator/wrapper** 实现（横切关注点解耦），而非内嵌在 client 中，根据 `max_qps` 配置控制请求速率。
+- **注意**：API 约束验证（最小存储、步长、冷却时间等）属于业务规则，已移至「组件 3 - 策略层」。
+- 具体实现 `AliyunPolarDBClient` 使用 RRSA 提供的临时凭证，从环境中读取 `ALIBABA_CLOUD_ROLE_ARN` 等信息（详细细节在实现阶段结合官方 SDK 文档确定）。
+- TDD: 在 `tests/test_cloud_client_contract.py` 中用 fake/in-memory 实现和 `unittest.mock`，验证：
+  - 接口契约（入参与出参类型）。
+  - SDK 异常到 `TransientCloudAPIError` / `PermanentCloudAPIError` 的正确映射。
+  - **脱敏后的错误信息不包含原始 request/response 数据**。
+  - **速率限制器（wrapper）调用次数符合 qps 限制**（使用 `freezegun` 或 mock `time.monotonic` 实现确定性测试）。
 
 ### 3. 集群筛选与策略计算
 
@@ -232,7 +237,7 @@ flowchart TD
       - 按 `B_target = ceil(A * 1.05)` 计算（105% 为固定值，与 README 对齐）。
       - 如果新旧值差异低于某个百分比或绝对阈值（例如 < 5% 或 < `min_change_threshold_gb`），则返回 `None` 表示无需调整。
       - 限制最大缩减比例（`max_shrink_ratio`）/ 扩容比例（`max_expand_ratio`），避免一次变更过大。
-    - `**validate_storage_constraints(target_gb, detail, config) -> int**`（从 cloud_client 移入的 API 约束验证，属于业务规则）：
+    - `**validate_storage_constraints(target_gb, detail, config) -> int`**（从 cloud_client 移入的 API 约束验证，属于业务规则）：
       - 最小存储限制（按实例规格，M4 阶段确认具体值）
       - 单次变更上限（`max_single_change_gb`）
       - 存储步长对齐（如必须是 5GB 的倍数，向上对齐）
@@ -263,7 +268,7 @@ flowchart TD
         - `TransientCloudAPIError` → 重试，最大 `retry_max_attempts` 次（默认 3）
         - 指数退避：`retry_backoff_base * 2^attempt`，上限 `retry_backoff_max`
         - `PermanentCloudAPIError` → 立即标记失败，不重试，不中断整体流程
-      - 支持简单的并发执行：使用 `**concurrent.futures.ThreadPoolExecutor**`，基于 `max_parallel_requests`。（同步 SDK 适用 ThreadPool；若未来 SDK 支持 async 可切换 asyncio）
+      - 支持简单的并发执行：使用 `**concurrent.futures.ThreadPoolExecutor`**，基于 `max_parallel_requests`。（同步 SDK 适用 ThreadPool；若未来 SDK 支持 async 可切换 asyncio）
     - **并发执行安全**：
       - K8s CronJob 的 `concurrencyPolicy: Forbid` 已防止调度层并发
       - 可选的分布式锁机制（使用 K8s ConfigMap 或数据库行锁），仅在以下场景启用：多副本/跨命名空间部署、手动触发与定时触发并存
@@ -312,7 +317,7 @@ flowchart TD
     - 结构化日志（JSON 格式）+ 按环境变量控制 log level
     - 每条日志自动携带 **Trace ID**（由 `main.py` 在启动时生成并注入）
   - 在 `[src/polardb_storage_resizer/redaction.py](src/polardb_storage_resizer/redaction.py)` 提供敏感信息脱敏工具（已在组件 0 中定义）：
-    - `redact_cluster_id(cluster_id)`: 脱敏集群 ID（保留前 8 位 + `****`）
+    - `redact_cluster_id(cluster_id)`: 脱敏集群 ID（保留前 8 位 + `**`**）
     - `redact_error_message(error)`: 清洗 SDK 异常中的 request/response 敏感信息
     - 可选：脱敏存储大小（根据合规要求决定）
   - 在 `[src/polardb_storage_resizer/metrics.py](src/polardb_storage_resizer/metrics.py)` 预留简单指标接口：
@@ -327,15 +332,15 @@ flowchart TD
     - **集群 ID 等敏感字段被正确脱敏**。
     - `**redact_error_message()` 能正确清洗 SDK 异常信息**。
 
-### 7. Kubernetes 集成与 RSSA 配置
+### 7. Kubernetes 集成与 RRSA 配置
 
-- **目标**: 提供部署示例 YAML，使 CronJob 可以直接在 K8s 上跑起来，并通过 RSSA 获取云侧权限。
+- **目标**: 提供部署示例 YAML，使 CronJob 可以直接在 K8s 上跑起来，并通过 RRSA 获取云侧权限。
 - **计划**:
   - 在 `[k8s/cronjob.yaml](k8s/cronjob.yaml)` 中：
     - 定义 `CronJob`，调度为每天 02:00（`0 2 * * *`）。
     - 通过 `serviceAccountName` 绑定到预先配置好的 ServiceAccount；在注释中说明需要绑定的 RAM Role 与示例策略（参考 README 中 RAM 策略示例）。
     - 将关键配置通过 `ConfigMap` 或环境变量注入容器，如 `RUN_MODE`, `REGIONS`, `LOG_LEVEL` 等。
-  - 在 `[k8s/serviceaccount-rssa.yaml](k8s/serviceaccount-rssa.yaml)` 中给出绑定 RSSA 的示例（根据你们的云平台实际 CRD 格式编写）。
+  - 在 `[k8s/serviceaccount-rrsa.yaml](k8s/serviceaccount-rrsa.yaml)` 中给出绑定 RRSA 的示例（根据你们的云平台实际 CRD 格式编写）。
   - 在 `[docs/deployment.md](docs/deployment.md)` 中说明：如何在集群中创建 ServiceAccount、绑定 RAM 角色、部署 CronJob、验证运行结果。
 
 ### 8. 项目结构与基础工具
@@ -347,9 +352,9 @@ flowchart TD
     - `Makefile`，封装常用命令：`install`、`test`、`lint`、`fmt`、`run-local`。
   - 配置基础工具：
     - `pytest` 作为测试框架 + `pytest-cov` 做覆盖率统计。
-    - `**ruff**` 同时承担 lint 和格式化（替代 `flake8` + `black`，简化工具链）。
+    - `**ruff`** 同时承担 lint 和格式化（替代 `flake8` + `black`，简化工具链）。
     - `freezegun` 用于速率限制器等时间相关测试。
-  - **创建 `tests/conftest.py**`：
+  - **创建 `tests/conftest.py`**：
     - 共享 fixture：fake PolarDB client 工厂、标准测试配置、sample cluster 数据加载器
     - 环境隔离：确保每个测试使用独立的环境变量和临时目录
     - 可选：自动清理与日志捕获
@@ -362,14 +367,12 @@ flowchart TD
 
 以下测试需要使用 `freezegun` 来冻结时间，实现确定性测试：
 
-
 | 测试文件                            | 测试场景         | freezegun 用法                                     |
 | ------------------------------- | ------------ | ------------------------------------------------ |
 | `test_cloud_client_contract.py` | 速率限制器 QPS 控制 | `@freeze_time("2024-01-01 00:00:00")` 验证单位时间内请求数 |
 | `test_executor.py`              | 指数退避重试       | 冻结时间后手动推进，验证退避间隔 `1s → 2s → 4s`                  |
 | `test_executor.py`              | 冷却时间检查       | 冻结时间模拟上次变更时间，验证冷却期内拒绝变更                          |
 | `test_strategy.py`              | 冷却时间约束       | 同上，策略层冷却时间验证                                     |
-
 
 **示例代码**：
 
@@ -400,7 +403,7 @@ class TestRetryBackoff:
     - `tests/conftest.py` - **共享 fixture**（fake client 工厂、标准配置、cluster 数据加载、环境隔离）
     - `tests/test_errors.py` - 错误类型序列化/反序列化、Transient/Permanent 区分、脱敏后序列化
     - `tests/fixtures/` - 测试数据固件（sample_clusters.json 含边界场景、sample_config.yaml、invalid_config.yaml）
-    - `tests/test_config.py` - 配置加载与验证、RSSA fast-fail
+    - `tests/test_config.py` - 配置加载与验证、RRSA fast-fail
     - `tests/test_strategy.py` - 存储调整策略计算、**边界用例（A=0, A=B, A>B）**、API 约束验证
     - `tests/test_executor.py` - 执行器与并发控制、**重试行为**、**优雅关闭（shutdown_event）**
     - `tests/test_cloud_client_contract.py` - 云 API 接口契约、**SDK 异常脱敏**、速率限制器
@@ -420,7 +423,8 @@ class TestRetryBackoff:
     - 评估是否需要合并 `logging_setup.py` 与 `metrics.py` 为 `observability.py`。
 - **并行化机会**：
 **Phase 1 - RED 测试（可并行）**:
-  ```text
+
+```text
   Task(tester): red-conftest-fixtures     → 独立，基础层
   Task(tester): red-errors                → 独立，无依赖
   Task(tester): red-config                → 独立，无依赖
@@ -429,37 +433,55 @@ class TestRetryBackoff:
   Task(tester): red-executor              → 独立，无依赖 [freezegun]
   Task(tester): red-main-flow             → 独立，无依赖
   Task(devops-engineer): k8s-manifests    → 独立，无依赖
-  ```
+  
+
+```
+
   **Phase 2 - GREEN 实现（可部分并行）**:
-  ```text
+
+```text
   Task(backend-developer): green-models-errors-redaction  → 基础层，优先完成
   Task(backend-developer): green-config                   → 并行，依赖基础层
   Task(backend-developer): green-strategy                 → 并行，依赖 config
   Task(backend-developer): green-cloud-client             → 并行，依赖基础层
   Task(backend-developer): green-executor                 → 依赖 cloud_client + strategy
-  ```
+  
+
+```
+
   **Phase 2.5 - 里程碑审查（顺序）**:
-  ```text
+
+```text
   Task(code-reviewer): review-m1  → 审查基础层，阻塞 M2
   Task(code-reviewer): review-m2  → 审查执行层，阻塞 M3
-  ```
+  
+
+```
+
   **Phase 3 - 集成（顺序）**:
-  ```text
+
+```text
   Task(backend-developer): green-main            → 依赖所有组件 + review-m2
   Task(backend-developer): green-logging-metrics → 依赖基础层
   Task(code-reviewer): review-m3                 → 审查主流程
-  ```
+  
+
+```
+
   **Phase 4 - 文档（可并行）**:
-  ```text
+
+```text
   Task(documentation-writer): docs-readme      → 依赖 review-m3
   Task(documentation-writer): docs-deployment  → 依赖 k8s-manifests
-  ```
+  
+
+```
+
   **完整依赖关系图**:
 
 ### 角色-Agent 映射表
 
 根据 `/parallel-dev` 规范，本项目使用的角色与对应 Agent：
-
 
 | 角色                     | Agent                  | 职责            | 关键任务            |
 | ---------------------- | ---------------------- | ------------- | --------------- |
@@ -468,7 +490,6 @@ class TestRetryBackoff:
 | `devops-engineer`      | `devops-engineer`      | K8s 清单、部署配置   | k8s-manifests   |
 | `code-reviewer`        | `code-reviewer`        | 代码审查、质量检查     | review-m1/m2/m3 |
 | `documentation-writer` | `documentation-writer` | 文档编写          | docs-* 系列任务     |
-
 
 **执行命令示例**：
 
@@ -506,9 +527,8 @@ claude-code --task code-reviewer "review-m1: 审查基础层代码"
 
 **审查清单**：
 
-
-| 审查点         | review-m1 | review-m2 | review-m3 |
-| ----------- | --------- | --------- | --------- |
+| 审查点 | review-m1 | review-m2 | review-m3 |
+| --- | --- | --- | --- |
 | 测试覆盖率 ≥ 80% | ✅         | ✅         | ✅         |
 | 类型注解完整      | ✅         | ✅         | ✅         |
 | 敏感信息脱敏      | ✅         | ✅         | ✅         |
@@ -516,7 +536,6 @@ claude-code --task code-reviewer "review-m1: 审查基础层代码"
 | 日志输出规范      | ---       | ✅         | ✅         |
 | 文档字符串       | ✅         | ✅         | ✅         |
 | 无硬编码凭证      | ✅         | ✅         | ✅         |
-
 
 ### 里程碑详情
 
@@ -527,7 +546,7 @@ claude-code --task code-reviewer "review-m1: 审查基础层代码"
 - `**tests/conftest.py` 共享 fixture 就绪**。
 - 测试固件 (`tests/fixtures/`) 完成，含边界场景数据。
 - config & strategy 层单元测试与实现完成（本地纯函数级别验证）。
-- **配置验证逻辑测试覆盖（含 RSSA fast-fail）**。
+- **配置验证逻辑测试覆盖（含 RRSA fast-fail）**。
 - **审查**: `review-m1` - 基础层代码质量、错误类型设计合理性
 
 1. **M2 – 云 API 抽象与执行器**
@@ -552,7 +571,7 @@ claude-code --task code-reviewer "review-m1: 审查基础层代码"
 1. **M4 – 云环境与 K8s 部署**
 
 - **研究并确认 Aliyun API 字段名（计费类型、状态、存储字段）与响应结构**。
-- 接入真实 Aliyun SDK 或 HTTP API，完成与 RSSA 的集成。
+- 接入真实 Aliyun SDK 或 HTTP API，完成与 RRSA 的集成。
 - **实现 API 约束验证（最小存储、步长、冷却时间）——已在 strategy 层预留位置**。
 - K8s `CronJob`（含 `concurrencyPolicy: Forbid`）+ `ServiceAccount` 示例 YAML 验证可在测试集群中成功运行（至少 dry-run）。
 - **K8s 验收标准**：CronJob 调度时间正确（02:00）、SA 绑定正确、RAM 策略生效、dry-run 可正常执行。
@@ -572,19 +591,16 @@ claude-code --task code-reviewer "review-m1: 审查基础层代码"
 
 ## 关键风险与缓解措施
 
-
 | 风险类别             | 风险描述                                             | 缓解措施                                              |
 | ---------------- | ------------------------------------------------ | ------------------------------------------------- |
-| **RSSA 实现细节**    | 环境变量名和凭证链可能与计划不同                                 | M4 阶段详细研究 Aliyun SDK 文档，使用正确的环境变量                 |
+| **RRSA 实现细节**    | 环境变量名和凭证链可能与计划不同                                 | M4 阶段详细研究 Aliyun SDK 文档，使用正确的环境变量                 |
 | **API 约束未知**     | 存储最小值、步长、冷却时间等限制未在文档中明确                          | M4 阶段通过测试 API 调用或联系技术支持确认                         |
 | **并发修改**         | 多个实例同时运行可能产生竞态条件                                 | K8s `concurrencyPolicy: Forbid` + 可选分布式锁 + 并发警告日志 |
 | **字段名不确定**       | 计费类型、状态字段的实际名称待确认                                | M4 阶段使用 DescribeDBClusterAttribute API 验证         |
 | **API 响应字段映射**   | DescribeDBClusterAttribute 返回的 A/B 字段名可能与模型中预设不同 | M4 阶段调用真实 API 获取响应样本，确认字段映射并更新 models.py          |
 | **SDK 异常泄露敏感信息** | Aliyun SDK 异常可能包含 request/response 中的敏感数据        | 使用 `redact_error_message()` 包装所有 SDK 异常，契约测试覆盖    |
 
-
 ## 设计决策记录
-
 
 | 决策编号    | 主题              | 决策                                        | 原因                               |
 | ------- | --------------- | ----------------------------------------- | -------------------------------- |
@@ -597,17 +613,15 @@ claude-code --task code-reviewer "review-m1: 审查基础层代码"
 | ADR-007 | 优雅关闭实现          | 注入 `threading.Event`                      | 可测试性优于直接绑定 signal handler        |
 | ADR-008 | 并发安全            | 依赖 K8s `concurrencyPolicy: Forbid`，分布式锁可选 | 避免 YAGNI，CronJob 场景下 K8s 已提供保障   |
 
-
 ## 启动前检查清单
 
 在开始 Phase 1 (RED 测试) 前，确认：
 
 - Aliyun PolarDB Python SDK 文档已查阅
 - DescribeDBClusters API 返回字段结构已了解
-- RRSA/RSSA 环境变量名称已确认（查阅 ACK 文档）
+- RRSA 环境变量名称已确认（查阅 ACK 文档）
 - 项目目录结构已创建（`src/polardb_storage_resizer/`、`tests/`、`tests/fixtures/`、`k8s/`、`docs/`）
 - `tests/conftest.py` 文件已创建（共享 fixture 骨架）
 - `pyproject.toml` 已补充依赖声明（pydantic、pytest、ruff、freezegun 等）
 - `.env.example` 文件已准备（记录所有可配置的环境变量）
 - CronJob 时区已确认（02:00 对应的时区，在 `docs/deployment.md` 中说明）
-

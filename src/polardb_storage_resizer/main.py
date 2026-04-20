@@ -311,10 +311,10 @@ def main() -> int:
                 logger.error("Configuration error: %s", error)
             return EXIT_CONFIG_ERROR
 
-        # Validate RSSA for apply mode
-        is_valid, error_message = config.validate_rssa()
+        # Validate RRSA for apply mode
+        is_valid, error_message = config.validate_rrsa()
         if not is_valid:
-            logger.error("RSSA validation failed: %s", error_message)
+            logger.error("RRSA validation failed: %s", error_message)
             return EXIT_CONFIG_ERROR
 
     except ValidationError as e:

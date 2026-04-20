@@ -41,7 +41,7 @@ helm install polardb-resizer ./charts/polardb-storage-resizer \
 ### Key Configuration Parameters
 
 | Parameter | Description | Default |
-|-----------|-------------|---------|
+| --- | --- | --- |
 | `config.runMode` | Run mode: `dry-run` or `apply` | `dry-run` |
 | `config.regions` | Target regions (comma-separated) | `cn-hangzhou` |
 | `config.logLevel` | Log level | `INFO` |
@@ -72,19 +72,30 @@ rrsa:
 
 ```json
 {
-  "Statement": [{
-    "Action": "sts:AssumeRole",
-    "Condition": {
-      "StringEquals": {
-        "oidc:aud": "sts.amazonaws.com",
-        "oidc:sub": "system:serviceaccount:<namespace>:<release>-polardb-storage-resizer"
+  "Statement": [
+    {
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": {
+          "oidc:aud": [
+            "sts.aliyuncs.com"
+          ],
+          "oidc:iss": [
+            "https://oidc-ack-cn-hangzhou.oss-cn-hangzhou.aliyuncs.com/<alibaba-cloud-k8s-cluster-id>"
+          ],
+          "oidc:sub": [
+            "system:serviceaccount:<namespace>:<helm-release-account-name>"
+          ]
+        }
+      },
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": [
+          "acs:ram::<alibaba-cloud-account-id>:oidc-provider/ack-rrsa-<alibaba-cloud-k8s-cluster-id>"
+        ]
       }
-    },
-    "Effect": "Allow",
-    "Principal": {
-      "Federated": ["acs:ram::<account-id>:oidc-provider/ack-rrsa-cls-<cluster-id>"]
     }
-  }],
+  ],
   "Version": "1"
 }
 ```
@@ -94,15 +105,26 @@ rrsa:
 ```json
 {
   "Version": "1",
-  "Statement": [{
-    "Effect": "Allow",
-    "Action": [
-      "polardb:DescribeDBClusters",
-      "polardb:DescribeDBClusterAttribute",
-      "polardb:ModifyDBClusterStorageSpace"
-    ],
-    "Resource": ["*"]
-  }]
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "polardb:DescribeDBClusters",
+        "polardb:DescribeDBClusterAttribute"
+      ],
+      "Resource": ["*"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "polardb:ModifyDBClusterStorageSpace",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "acs:ResourceTag/auto-resize": ["on"]
+        }
+      }
+    }
+  ]
 }
 ```
 
