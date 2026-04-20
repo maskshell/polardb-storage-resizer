@@ -76,7 +76,8 @@ rrsa:
 # Container image
 image:
   # Replace with your registry
-  repository: "your-registry.example.com/polardb-storage-resizer"
+  # For GHCR: ghcr.io/maskshell/polardb-storage-resizer
+  repository: "ghcr.io/maskshell/polardb-storage-resizer"
   tag: ""  # Defaults to .Chart.appVersion
   pullPolicy: Always
 

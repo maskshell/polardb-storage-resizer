@@ -40,22 +40,27 @@ B_target = ceil(A × buffer_percent / 100)
 
 ```bash
 # 克隆项目
-git clone <repository-url>
+git clone https://github.com/maskshell/polardb-storage-resizer
 cd polardb-storage-resizer
 
-# 创建虚拟环境
-uv venv
-source .venv/bin/activate
-
 # 安装依赖
-uv pip install -e ".[dev]"
+uv sync --frozen --dev
+```
 
-# 运行测试
-uv run pytest tests/ -v
+**本地 CI 检查**（需要 [just](https://github.com/casey/just)）：
 
-# 代码检查
-uv run ruff check src/
-uv run ruff format src/
+```bash
+# 安装 just
+brew install just
+
+# 运行全部 CI 检查（lint + test + helm-lint）
+just ci
+
+# 或单独运行
+just lint
+just test
+just helm-lint
+just docker-build
 ```
 
 ### 3. 本地运行（dry-run 模式）
@@ -241,17 +246,17 @@ PolarDB 的存储限制与集群的存储类型相关，程序自动根据 `Desc
 
 ```bash
 # 1. 创建命名空间
-kubectl create namespace polardb-resizer
+kubectl create namespace dba
 
 # 2. 创建 ServiceAccount（配置 RSSA）
-kubectl apply -f k8s/serviceaccount-rssa.yaml -n polardb-resizer
+kubectl apply -f k8s/serviceaccount-rssa.yaml -n dba
 
 # 3. 部署 CronJob
-kubectl apply -f k8s/cronjob.yaml -n polardb-resizer
+kubectl apply -f k8s/cronjob.yaml -n dba
 
 # 4. 验证部署
-kubectl get cronjob -n polardb-resizer
-kubectl get pods -n polardb-resizer
+kubectl get cronjob -n dba
+kubectl get pods -n dba
 ```
 
 ## API 参考
@@ -306,7 +311,7 @@ kubectl get pods -n polardb-resizer
 
 **替换参数**：
 
-- `<namespace>`: 部署命名空间（如 `polardb-resizer`）
+- `<namespace>`: 部署命名空间（如 `dba`）
 - `<sa-name>`: ServiceAccount 名称（Helm 部署时为 `<release>-polardb-storage-resizer`）
 - `<account-id>`: 阿里云账号 ID
 - `<cluster-id>`: ACK 集群 ID

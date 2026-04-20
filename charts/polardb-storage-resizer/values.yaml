@@ -123,6 +123,7 @@ rrsa:
 # -----------------------------------------------------------------------------
 image:
   # Container image repository (REQUIRED — set to your registry path)
+  # For GHCR: ghcr.io/maskshell/polardb-storage-resizer
   repository: ""
 
   # Image tag (defaults to .Chart.appVersion if not set)

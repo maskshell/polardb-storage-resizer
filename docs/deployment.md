@@ -32,10 +32,10 @@
 
 ```bash
 # 构建镜像
-docker build -t your-registry.example.com/polardb-storage-resizer:v1.0.0 .
+docker build -t ghcr.io/maskshell/polardb-storage-resizer:v1.0.0 .
 
 # 推送镜像
-docker push your-registry.example.com/polardb-storage-resizer:v1.0.0
+docker push ghcr.io/maskshell/polardb-storage-resizer:v1.0.0
 ```
 
 ## 快速部署
@@ -43,7 +43,7 @@ docker push your-registry.example.com/polardb-storage-resizer:v1.0.0
 ### 步骤 1：创建命名空间
 
 ```bash
-kubectl create namespace polardb-resizer
+kubectl create namespace dba
 ```
 
 ### 步骤 2：配置 RSSA
@@ -59,7 +59,7 @@ annotations:
 然后部署 ServiceAccount：
 
 ```bash
-kubectl apply -f k8s/serviceaccount-rssa.yaml -n polardb-resizer
+kubectl apply -f k8s/serviceaccount-rssa.yaml -n dba
 ```
 
 ### 步骤 3：配置 CronJob
@@ -68,10 +68,10 @@ kubectl apply -f k8s/serviceaccount-rssa.yaml -n polardb-resizer
 
 ```yaml
 # 1. 修改命名空间
-namespace: polardb-resizer
+namespace: dba
 
 # 2. 修改镜像地址
-image: your-registry.example.com/polardb-storage-resizer:v1.0.0
+image: ghcr.io/maskshell/polardb-storage-resizer:v1.0.0
 
 # 3. 修改运行模式（生产环境改为 apply）
 - name: RUN_MODE
@@ -85,23 +85,23 @@ image: your-registry.example.com/polardb-storage-resizer:v1.0.0
 部署 CronJob：
 
 ```bash
-kubectl apply -f k8s/cronjob.yaml -n polardb-resizer
+kubectl apply -f k8s/cronjob.yaml -n dba
 ```
 
 ### 步骤 4：验证部署
 
 ```bash
 # 查看 CronJob 状态
-kubectl get cronjob -n polardb-resizer
+kubectl get cronjob -n dba
 
 # 查看 Job 历史
-kubectl get jobs -n polardb-resizer
+kubectl get jobs -n dba
 
 # 手动触发一次执行（测试用）
-kubectl create job --from=cronjob/polardb-storage-resizer test-run-$(date +%s) -n polardb-resizer
+kubectl create job --from=cronjob/polardb-storage-resizer test-run-$(date +%s) -n dba
 
 # 查看 Pod 日志
-kubectl logs -l app.kubernetes.io/name=polardb-storage-resizer -n polardb-resizer
+kubectl logs -l app.kubernetes.io/name=polardb-storage-resizer -n dba
 ```
 
 ## RSSA/RRSA 配置
@@ -124,7 +124,7 @@ RRSA (RAM Roles for Service Accounts) 是阿里云 ACK 提供的功能，允许 
       "Condition": {
         "StringEquals": {
           "oidc:aud": "sts.amazonaws.com",
-          "oidc:sub": "system:serviceaccount:polardb-resizer:polardb-resizer-sa"
+          "oidc:sub": "system:serviceaccount:dba:polardb-resizer-sa"
         }
       },
       "Effect": "Allow",
@@ -184,7 +184,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: polardb-resizer-sa
-  namespace: polardb-resizer
+  namespace: dba
   annotations:
     # 只需要角色名称，不需要完整 ARN
     pod-identity.alibabacloud.com/role-name: "PolardbStorageResizerRole"
@@ -203,7 +203,7 @@ resource "alicloud_ram_role" "polardb_resizer" {
         Condition = {
           StringEquals = {
             "oidc:aud" = "sts.amazonaws.com"
-            "oidc:sub" = "system:serviceaccount:polardb-resizer:polardb-resizer-sa"
+            "oidc:sub" = "system:serviceaccount:dba:polardb-resizer-sa"
           }
         }
         Effect = "Allow"
@@ -322,13 +322,13 @@ resources:
 
 ```bash
 # 查看最近一次执行的日志
-kubectl logs -l app.kubernetes.io/name=polardb-storage-resizer -n polardb-resizer --tail=100
+kubectl logs -l app.kubernetes.io/name=polardb-storage-resizer -n dba --tail=100
 
 # 实时跟踪日志
-kubectl logs -f -l app.kubernetes.io/name=polardb-storage-resizer -n polardb-resizer
+kubectl logs -f -l app.kubernetes.io/name=polardb-storage-resizer -n dba
 
 # 查看特定 Job 的日志
-kubectl logs job/polardb-storage-resizer-28572960 -n polardb-resizer
+kubectl logs job/polardb-storage-resizer-28572960 -n dba
 ```
 
 ### 日志格式
@@ -363,7 +363,7 @@ env:
 
 ```bash
 # 检查 ServiceAccount 注解
-kubectl get sa polardb-resizer-sa -n polardb-resizer -o yaml
+kubectl get sa polardb-resizer-sa -n dba -o yaml
 
 # 检查 OIDC 配置
 kubectl get configmap -n kube-system | grep rrsa
@@ -392,7 +392,7 @@ kubectl get configmap -n kube-system | grep rrsa
 
 ```bash
 # 检查 Pod 终止原因
-kubectl describe pod -l app.kubernetes.io/name=polardb-storage-resizer -n polardb-resizer
+kubectl describe pod -l app.kubernetes.io/name=polardb-storage-resizer -n dba
 ```
 
 **解决：**
@@ -488,8 +488,8 @@ env:
 kubectl apply -f k8s/cronjob.yaml  # RUN_MODE=dry-run
 
 # 2. 手动触发并检查日志
-kubectl create job --from=cronjob/polardb-storage-resizer test-$(date +%s) -n polardb-resizer
-kubectl logs -l app.kubernetes.io/name=polardb-storage-resizer -n polardb-resizer
+kubectl create job --from=cronjob/polardb-storage-resizer test-$(date +%s) -n dba
+kubectl logs -l app.kubernetes.io/name=polardb-storage-resizer -n dba
 
 # 3. 确认无误后，修改为 apply 模式
 # 更新 ConfigMap 或 CronJob 的 env 配置

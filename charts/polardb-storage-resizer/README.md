@@ -16,7 +16,7 @@ Automatically adjusts PolarDB prepaid storage size based on actual usage.
 ```bash
 # Install in dry-run mode (no actual changes)
 helm install polardb-resizer ./charts/polardb-storage-resizer \
-  --namespace polardb-resizer \
+  --namespace dba \
   --create-namespace \
   --set config.regions="cn-hangzhou\,cn-beijing" \
   --set rrsa.roleName="PolardbStorageResizerRole"
@@ -32,7 +32,7 @@ cp values-prod.example.yaml my-values.yaml
 # Install with production values
 helm install polardb-resizer ./charts/polardb-storage-resizer \
   -f my-values.yaml \
-  --namespace polardb-resizer \
+  --namespace dba \
   --create-namespace
 ```
 
@@ -110,20 +110,20 @@ rrsa:
 
 ```bash
 # Check CronJob status
-kubectl get cronjob -n polardb-resizer
+kubectl get cronjob -n dba
 
 # Manual run
 kubectl create job --from=cronjob/<release>-polardb-storage-resizer \
-  -n polardb-resizer manual-run-$(date +%s)
+  -n dba manual-run-$(date +%s)
 
 # View logs
-kubectl logs -n polardb-resizer -l app.kubernetes.io/name=polardb-storage-resizer --tail=100
+kubectl logs -n dba -l app.kubernetes.io/name=polardb-storage-resizer --tail=100
 
 # Upgrade
-helm upgrade polardb-resizer ./charts/polardb-storage-resizer -n polardb-resizer
+helm upgrade polardb-resizer ./charts/polardb-storage-resizer -n dba
 
 # Uninstall
-helm uninstall polardb-resizer -n polardb-resizer
+helm uninstall polardb-resizer -n dba
 ```
 
 ## Reference

@@ -34,7 +34,7 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: polardb-storage-resizer
-  namespace: default  # Change to your target namespace
+  namespace: dba  # Change to your target namespace
   labels:
     app.kubernetes.io/name: polardb-storage-resizer
     app.kubernetes.io/component: cronjob
@@ -100,7 +100,7 @@ spec:
           containers:
             - name: resizer
               # Replace with your actual image registry and tag
-              image: your-registry.example.com/polardb-storage-resizer:latest
+              image: ghcr.io/maskshell/polardb-storage-resizer:latest
               imagePullPolicy: Always
 
               # Container security
