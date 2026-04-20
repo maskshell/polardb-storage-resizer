@@ -3,9 +3,9 @@ entries:
   polardb-storage-resizer:
   - apiVersion: v2
     appVersion: 0.1.0
-    created: "2026-04-20T10:27:56.192928523Z"
+    created: "2026-04-20T10:41:03.333239415Z"
     description: PolarDB Storage Resizer
-    digest: da40bec59f9b610b45b09b146ded495803465a3153aba683a8c7c4beb4711955
+    digest: 349b22a06b3ce14373a42661421ba95bf38efeb41a7933041274a51fabf19e4d
     home: https://github.com/maskshell/polardb-storage-resizer
     kubeVersion: '>=1.27.0-0'
     maintainers:
@@ -17,4 +17,4 @@ entries:
     urls:
     - https://github.com/maskshell/polardb-storage-resizer/releases/download/v0.1.0/polardb-storage-resizer-0.1.0.tgz
     version: 0.1.0
-generated: "2026-04-20T10:27:56.191998367Z"
+generated: "2026-04-20T10:41:03.332536683Z"
