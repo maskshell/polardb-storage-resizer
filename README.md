@@ -137,6 +137,8 @@ uv run python -m polardb_storage_resizer.main
 | `CLUSTER_WHITELIST` | 否 | - | 集群白名单，多个用逗号分隔，设置后仅处理白名单内集群 |
 | `CLUSTER_BLACKLIST` | 否 | - | 集群黑名单，多个用逗号分隔，优先级高于白名单 |
 | `CLUSTER_TAG_FILTERS` | 否 | - | 集群标签筛选，格式为 `key1:value1,key2:value2`，仅处理具有所有指定标签的集群 |
+| `API_CONNECT_TIMEOUT` | 否 | `5` | API 连接超时（秒） |
+| `API_READ_TIMEOUT` | 否 | `30` | API 读取超时（秒） |
 | `METRICS_ENABLED` | 否 | `true` | 是否输出结构化指标日志 |
 | `USE_FAKE_CLIENT` | 否 | `false` | 使用 Fake 客户端（测试用），设为 `true` 启用 |
 | `ALIBABA_CLOUD_ACCESS_KEY_ID` | 否 | - | AccessKey ID（本地开发用） |
@@ -293,14 +295,21 @@ kubectl get pods -n dba
       "Action": "sts:AssumeRole",
       "Condition": {
         "StringEquals": {
-          "oidc:aud": "sts.amazonaws.com",
-          "oidc:sub": "system:serviceaccount:<namespace>:<sa-name>"
+          "oidc:aud": [
+            "sts.aliyuncs.com"
+          ],
+          "oidc:iss": [
+            "https://oidc-ack-cn-hangzhou.oss-cn-hangzhou.aliyuncs.com/<alibaba-cloud-k8s-cluster-id>"
+          ],
+          "oidc:sub": [
+            "system:serviceaccount:<namespace>:<sa-name>"
+          ]
         }
       },
       "Effect": "Allow",
       "Principal": {
         "Federated": [
-          "acs:ram::<account-id>:oidc-provider/ack-rrsa-cls-<cluster-id>"
+          "acs:ram::<alibaba-cloud-account-id>:oidc-provider/ack-rrsa-<alibaba-cloud-k8s-cluster-id>"
         ]
       }
     }
@@ -313,8 +322,8 @@ kubectl get pods -n dba
 
 - `<namespace>`: 部署命名空间（如 `dba`）
 - `<sa-name>`: ServiceAccount 名称（Helm 部署时为 `<release>-polardb-storage-resizer`）
-- `<account-id>`: 阿里云账号 ID
-- `<cluster-id>`: ACK 集群 ID
+- `<alibaba-cloud-account-id>`: 阿里云账号 ID
+- `<alibaba-cloud-k8s-cluster-id>`: ACK 集群 ID
 
 ### 3. 创建权限策略并附加到角色
 
@@ -333,7 +342,7 @@ kubectl get pods -n dba
     {
       "Effect": "Allow",
       "Action": "polardb:ModifyDBClusterStorageSpace",
-      "Resource": "*",
+      "Resource": ["*"],
       "Condition": {
         "StringEquals": {
           "acs:ResourceTag/auto-resize": ["on"]

@@ -11,11 +11,15 @@ Automatically adjusts PolarDB prepaid storage size based on actual usage.
 
 ## Installation
 
+```bash
+helm repo add polardb-resizer https://maskshell.github.io/polardb-storage-resizer/
+helm repo update
+```
+
 ### Quick Start (Dry-run mode)
 
 ```bash
-# Install in dry-run mode (no actual changes)
-helm install polardb-resizer ./charts/polardb-storage-resizer \
+helm install polardb-resizer polardb-resizer/polardb-storage-resizer \
   --namespace dba \
   --create-namespace \
   --set config.regions="cn-hangzhou\,cn-beijing" \
@@ -25,15 +29,15 @@ helm install polardb-resizer ./charts/polardb-storage-resizer \
 ### Production Installation (Apply mode)
 
 ```bash
-# Copy the example file and customize
-cp values-prod.example.yaml my-values.yaml
+# Minimal: only set runMode, regions, RRSA role, and image
+helm install polardb-resizer polardb-resizer/polardb-storage-resizer \
+  -f values-minimal.example.yaml -n dba --create-namespace
 
+# Full: copy and customize the production example
+cp values-prod.example.yaml my-values.yaml
 # Edit my-values.yaml — IMPORTANT: set config.runMode to "apply"
-# Install with production values
-helm install polardb-resizer ./charts/polardb-storage-resizer \
-  -f my-values.yaml \
-  --namespace dba \
-  --create-namespace
+helm install polardb-resizer polardb-resizer/polardb-storage-resizer \
+  -f my-values.yaml -n dba --create-namespace
 ```
 
 ## Configuration
@@ -46,6 +50,12 @@ helm install polardb-resizer ./charts/polardb-storage-resizer \
 | `config.regions` | Target regions (comma-separated) | `cn-hangzhou` |
 | `config.logLevel` | Log level | `INFO` |
 | `config.bufferPercent` | Storage buffer percentage (must be > 100) | `105` |
+| `config.maxExpandRatio` | Max expansion ratio (target/current) | `2.0` |
+| `config.maxShrinkRatio` | Min shrink ratio (target/current) | `0.5` |
+| `config.maxSingleChangeGb` | Max single change in GB | `1000` |
+| `config.minChangeThresholdGb` | Min change threshold in GB (step: 10GB) | `10` |
+| `config.maxQps` | Max API queries per second | `10` |
+| `config.maxParallelRequests` | Max concurrent API requests | `5` |
 | `config.clusterWhitelist` | Cluster whitelist (optional) | `""` |
 | `config.clusterBlacklist` | Cluster blacklist (optional, higher priority) | `""` |
 | `config.clusterTagFilters` | Cluster tag filters (`key1:value1,key2:value2`) | `""` |
@@ -117,7 +127,7 @@ rrsa:
     {
       "Effect": "Allow",
       "Action": "polardb:ModifyDBClusterStorageSpace",
-      "Resource": "*",
+      "Resource": ["*"],
       "Condition": {
         "StringEquals": {
           "acs:ResourceTag/auto-resize": ["on"]
@@ -142,7 +152,8 @@ kubectl create job --from=cronjob/<release>-polardb-storage-resizer \
 kubectl logs -n dba -l app.kubernetes.io/name=polardb-storage-resizer --tail=100
 
 # Upgrade
-helm upgrade polardb-resizer ./charts/polardb-storage-resizer -n dba
+helm repo update
+helm upgrade polardb-resizer polardb-resizer/polardb-storage-resizer -n dba
 
 # Uninstall
 helm uninstall polardb-resizer -n dba

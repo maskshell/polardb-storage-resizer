@@ -1,0 +1,20 @@
+# =============================================================================
+# PolarDB Storage Resizer - Minimal Values Example
+# =============================================================================
+# Minimal configuration for quick deployment.
+# All other values use defaults from values.yaml.
+#
+# Usage:
+#   helm install polardb-resizer polardb-resizer/polardb-storage-resizer \
+#     -f values-minimal.example.yaml -n dba --create-namespace
+# =============================================================================
+
+config:
+  runMode: "apply"
+  regions: "cn-hangzhou"
+
+rrsa:
+  roleName: "PolardbStorageResizerRole"
+
+image:
+  repository: "ghcr.io/maskshell/polardb-storage-resizer"

@@ -123,14 +123,21 @@ RRSA (RAM Roles for Service Accounts) 是阿里云 ACK 提供的功能，允许 
       "Action": "sts:AssumeRole",
       "Condition": {
         "StringEquals": {
-          "oidc:aud": "sts.amazonaws.com",
-          "oidc:sub": "system:serviceaccount:dba:polardb-resizer-sa"
+          "oidc:aud": [
+            "sts.aliyuncs.com"
+          ],
+          "oidc:iss": [
+            "https://oidc-ack-cn-hangzhou.oss-cn-hangzhou.aliyuncs.com/<alibaba-cloud-k8s-cluster-id>"
+          ],
+          "oidc:sub": [
+            "system:serviceaccount:<namespace>:<helm-release-serviceaccount-name>"
+          ]
         }
       },
       "Effect": "Allow",
       "Principal": {
         "Federated": [
-          "acs:ram::YOUR_ACCOUNT_ID:oidc-provider/ack-rrsa-cls-YOUR_CLUSTER_ID"
+          "acs:ram::<alibaba-cloud-account-id>:oidc-provider/ack-rrsa-<alibaba-cloud-k8s-cluster-id>"
         ]
       }
     }
@@ -160,12 +167,12 @@ RRSA (RAM Roles for Service Accounts) 是阿里云 ACK 提供的功能，允许 
         "polardb:DescribeDBClusters",
         "polardb:DescribeDBClusterAttribute"
       ],
-      "Resource": "*"
+      "Resource": ["*"]
     },
     {
       "Effect": "Allow",
       "Action": "polardb:ModifyDBClusterStorageSpace",
-      "Resource": "*",
+      "Resource": ["*"],
       "Condition": {
         "StringEquals": {
           "acs:ResourceTag/auto-resize": ["on"]
@@ -211,14 +218,15 @@ resource "alicloud_ram_role" "polardb_resizer" {
         Action = "sts:AssumeRole"
         Condition = {
           StringEquals = {
-            "oidc:aud" = "sts.amazonaws.com"
+            "oidc:aud" = "sts.aliyuncs.com"
+            "oidc:iss" = "https://oidc-ack-cn-hangzhou.oss-cn-hangzhou.aliyuncs.com/${var.cluster_id}"
             "oidc:sub" = "system:serviceaccount:dba:polardb-resizer-sa"
           }
         }
         Effect = "Allow"
         Principal = {
           Federated = [
-            "acs:ram::${var.account_id}:oidc-provider/ack-rrsa-cls-${var.cluster_id}"
+            "acs:ram::${var.account_id}:oidc-provider/ack-rrsa-${var.cluster_id}"
           ]
         }
       }
@@ -288,6 +296,9 @@ resource "alicloud_ram_role_policy_attachment" "attach" {
 | `API_CONNECT_TIMEOUT` | 否 | `5` | API 连接超时（秒） |
 | `API_READ_TIMEOUT` | 否 | `30` | API 读取超时（秒） |
 | `METRICS_ENABLED` | 否 | `true` | 是否输出结构化指标日志 |
+| `ALIBABA_CLOUD_ROLE_ARN` | apply 模式必填 | - | RRSA 角色 ARN（K8s 部署） |
+| `ALIBABA_CLOUD_ACCESS_KEY_ID` | 否 | - | AccessKey ID（本地开发用） |
+| `ALIBABA_CLOUD_ACCESS_KEY_SECRET` | 否 | - | AccessKey Secret（本地开发用） |
 
 ### 调度配置
 
