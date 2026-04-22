@@ -114,12 +114,16 @@ class TestSelectTargetClusters:
         """Empty whitelist should select all eligible clusters."""
         result = select_target_clusters(sample_clusters, sample_config)
 
-        # Should include all prepaid, running clusters
+        # Should include all prepaid, running, non-Standard-Edition-ESSD clusters
+        from polardb_storage_resizer.strategy import STANDARD_EDITION_STORAGE_TYPES
+
         expected_count = len(
             [
                 c
                 for c in sample_clusters
-                if c.pay_type == "Prepaid" and c.status == "Running"
+                if c.pay_type == "Prepaid"
+                and c.status == "Running"
+                and c.storage_type.lower().strip() not in STANDARD_EDITION_STORAGE_TYPES
             ]
         )
         assert len(result) == expected_count
@@ -866,3 +870,281 @@ class TestIntegrationScenarios:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestClusterTypeFiltering:
+    """Tests for cluster type filtering (Standard/Serverless/Multi-master)."""
+
+    def test_standard_edition_essd_excluded_from_selection(
+        self,
+        sample_config: AppConfig,
+    ) -> None:
+        """Standard Edition ESSD clusters should be excluded entirely."""
+        clusters = [
+            ClusterDetail(
+                cluster_id="pc-std",
+                region="cn-hangzhou",
+                cluster_name="standard",
+                status="Running",
+                pay_type="Prepaid",
+                storage_type="essdpl1",
+                used_storage_gb=80,
+                provisioned_storage_gb=100,
+                category="Normal",
+            ),
+        ]
+
+        result = select_target_clusters(clusters, sample_config)
+        assert result == []
+
+    def test_standard_edition_excluded_even_in_whitelist(
+        self,
+    ) -> None:
+        """Standard Edition ESSD excluded even when explicitly in whitelist."""
+        cluster = ClusterDetail(
+            cluster_id="pc-std",
+            region="cn-hangzhou",
+            cluster_name="standard",
+            status="Running",
+            pay_type="Prepaid",
+            storage_type="essdpl1",
+            used_storage_gb=80,
+            provisioned_storage_gb=100,
+            category="Normal",
+        )
+
+        config = AppConfig(
+            run_mode="dry-run",
+            regions=["cn-hangzhou"],
+            cluster_whitelist=["pc-std"],
+        )
+
+        result = select_target_clusters([cluster], config)
+        assert result == []
+
+    def test_enterprise_category_normal_is_not_excluded(
+        self,
+    ) -> None:
+        """Enterprise Edition (category=Normal, PSL storage) should NOT be excluded."""
+        cluster = ClusterDetail(
+            cluster_id="pc-enterprise",
+            region="cn-hangzhou",
+            cluster_name="enterprise",
+            status="Running",
+            pay_type="Prepaid",
+            storage_type="HighPerformance",
+            used_storage_gb=200,
+            provisioned_storage_gb=300,
+            category="Normal",
+        )
+
+        config = AppConfig(
+            run_mode="dry-run",
+            regions=["cn-hangzhou"],
+        )
+
+        result = select_target_clusters([cluster], config)
+        assert len(result) == 1
+
+    def test_serverless_cluster_selected_but_shrink_blocked(
+        self,
+    ) -> None:
+        """Serverless (SENormal) clusters should be selected but shrink blocked."""
+        cluster = ClusterDetail(
+            cluster_id="pc-sless",
+            region="cn-hangzhou",
+            cluster_name="serverless",
+            status="Running",
+            pay_type="Prepaid",
+            storage_type="essdpl1",
+            used_storage_gb=50,
+            provisioned_storage_gb=500,
+            category="SENormal",
+            serverless_type="AgileServerless",
+        )
+
+        config = AppConfig(
+            run_mode="dry-run",
+            regions=["cn-hangzhou"],
+            max_shrink_ratio=0.05,
+            max_single_change_gb=2000,
+        )
+
+        # Should NOT be selected (ESSD storage = Standard Edition, excluded)
+        selected = select_target_clusters([cluster], config)
+        assert selected == []
+
+    def test_serverless_psl_expand_allowed(
+        self,
+    ) -> None:
+        """Serverless cluster with PSL storage should allow expansion."""
+        cluster = ClusterDetail(
+            cluster_id="pc-sless-psl",
+            region="cn-hangzhou",
+            cluster_name="serverless-psl",
+            status="Running",
+            pay_type="Prepaid",
+            storage_type="psl4",
+            used_storage_gb=450,
+            provisioned_storage_gb=400,
+            category="SENormal",
+        )
+
+        config = AppConfig(run_mode="dry-run", regions=["cn-hangzhou"])
+
+        result = compute_target_storage(cluster, config)
+        assert result is not None
+        assert result > cluster.provisioned_storage_gb
+
+    def test_serverless_psl_shrink_blocked(
+        self,
+    ) -> None:
+        """Serverless cluster (SENormal) with PSL storage should block shrink."""
+        cluster = ClusterDetail(
+            cluster_id="pc-sless-psl",
+            region="cn-hangzhou",
+            cluster_name="serverless-psl",
+            status="Running",
+            pay_type="Prepaid",
+            storage_type="psl4",
+            used_storage_gb=50,
+            provisioned_storage_gb=500,
+            category="SENormal",
+        )
+
+        config = AppConfig(
+            run_mode="dry-run",
+            regions=["cn-hangzhou"],
+            max_shrink_ratio=0.05,
+            max_single_change_gb=2000,
+        )
+
+        result = compute_target_storage(cluster, config)
+        assert result is None
+
+    def test_multimaster_cluster_selected_but_shrink_blocked(
+        self,
+    ) -> None:
+        """Multi-master clusters should be selected but shrink should return None."""
+        cluster = ClusterDetail(
+            cluster_id="pc-multi",
+            region="cn-hangzhou",
+            cluster_name="multimaster",
+            status="Running",
+            pay_type="Prepaid",
+            storage_type="HighPerformance",
+            used_storage_gb=50,
+            provisioned_storage_gb=500,
+            category="NormalMultimaster",
+        )
+
+        config = AppConfig(
+            run_mode="dry-run",
+            regions=["cn-hangzhou"],
+            max_shrink_ratio=0.05,
+            max_single_change_gb=2000,
+        )
+
+        selected = select_target_clusters([cluster], config)
+        assert len(selected) == 1
+
+        result = compute_target_storage(cluster, config)
+        assert result is None
+
+    def test_multimaster_cluster_expand_allowed(
+        self,
+    ) -> None:
+        """Multi-master clusters should allow expansion."""
+        cluster = ClusterDetail(
+            cluster_id="pc-multi",
+            region="cn-hangzhou",
+            cluster_name="multimaster",
+            status="Running",
+            pay_type="Prepaid",
+            storage_type="HighPerformance",
+            used_storage_gb=450,
+            provisioned_storage_gb=400,
+            category="NormalMultimaster",
+        )
+
+        config = AppConfig(run_mode="dry-run", regions=["cn-hangzhou"])
+
+        result = compute_target_storage(cluster, config)
+        assert result is not None
+        assert result > cluster.provisioned_storage_gb
+
+    def test_enterprise_cluster_no_restrictions(
+        self,
+    ) -> None:
+        """Enterprise clusters (category=Normal, PSL storage) should work normally."""
+        cluster = ClusterDetail(
+            cluster_id="pc-enterprise",
+            region="cn-hangzhou",
+            cluster_name="enterprise",
+            status="Running",
+            pay_type="Prepaid",
+            storage_type="HighPerformance",
+            used_storage_gb=50,
+            provisioned_storage_gb=500,
+            category="Normal",
+            serverless_type="SteadyServerless",
+        )
+
+        config = AppConfig(
+            run_mode="dry-run",
+            regions=["cn-hangzhou"],
+            max_shrink_ratio=0.05,
+            max_single_change_gb=2000,
+        )
+
+        selected = select_target_clusters([cluster], config)
+        assert len(selected) == 1
+
+        # Shrink allowed for enterprise clusters
+        result = compute_target_storage(cluster, config)
+        assert result is not None
+        assert result < cluster.provisioned_storage_gb
+
+    def test_serverless_type_does_not_affect_enterprise(
+        self,
+    ) -> None:
+        """Enterprise with serverless_type=SteadyServerless should allow shrink."""
+        cluster = ClusterDetail(
+            cluster_id="pc-enterprise",
+            region="cn-hangzhou",
+            cluster_name="enterprise",
+            status="Running",
+            pay_type="Prepaid",
+            storage_type="HighPerformance",
+            used_storage_gb=50,
+            provisioned_storage_gb=500,
+            category="Normal",
+            serverless_type="SteadyServerless",
+        )
+
+        config = AppConfig(
+            run_mode="dry-run",
+            regions=["cn-hangzhou"],
+            max_shrink_ratio=0.05,
+            max_single_change_gb=2000,
+        )
+
+        result = compute_target_storage(cluster, config)
+        # Enterprise should allow shrink regardless of serverless_type
+        assert result is not None
+        assert result < cluster.provisioned_storage_gb
+
+    def test_sample_clusters_standard_edition_filtered(
+        self,
+        sample_clusters: list[ClusterDetail],
+        sample_config: AppConfig,
+    ) -> None:
+        """Standard Edition ESSD clusters in sample data should be filtered out."""
+        result = select_target_clusters(sample_clusters, sample_config)
+
+        for cluster in result:
+            storage_type = cluster.storage_type.lower().strip()
+            assert not storage_type.startswith("essd"), (
+                f"Standard Edition ESSD cluster {cluster.cluster_id} "
+                f"should be filtered out"
+            )

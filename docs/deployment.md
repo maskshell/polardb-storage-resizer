@@ -508,6 +508,24 @@ env:
 > 对于 ESSD PL2/PL3 类型，由于最小存储要求较高，请确保目标存储不会触发过大的缩容比例。
 > 企业版实际最大存储取决于节点规格（100TB~500TB），API 会在超出节点规格时拒绝变更。
 
+### 5. 集群类型操作限制
+
+> 参考：[手动扩缩容限制](https://help.aliyun.com/zh/polardb/polardb-for-mysql/user-guide/manually-scale-up-the-storage-capacity-of-a-cluster-1)
+
+程序根据集群类型自动限制操作范围，无需额外配置：
+
+| 集群类型 | 识别方式 | 操作 | 说明 |
+| --- | --- | --- | --- |
+| 企业版 | `category="Normal"`, PSL 存储 | 扩容 + 缩容 | 主要处理对象 |
+| 标准版 ESSD | `storage_type` 为 ESSD 类型 | 全部排除 | 缩容需数据迁移，扩容由 PolarDB 自动扩容处理 |
+| 多主集群 | `category="NormalMultimaster"` | 仅扩容 | 不支持缩容 |
+| Serverless | `category="SENormal"` | 仅扩容 | 不支持缩容 |
+
+排除/限制发生在两个阶段：
+
+- **筛选阶段**（`select_target_clusters`）：标准版 ESSD 集群被完全排除
+- **计划阶段**（`compute_target_storage`）：多主集群和 Serverless 集群的缩容计划被阻止
+
 ### 5. 先 dry-run 后 apply
 
 建议先在 dry-run 模式下验证：

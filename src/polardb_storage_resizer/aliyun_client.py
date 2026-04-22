@@ -291,6 +291,8 @@ class AliyunPolarDBClient:
                 storage_type=storage_type,
                 used_storage_gb=used_storage_gb,
                 provisioned_storage_gb=provisioned_storage_gb,
+                category=getattr(item, "category", None),
+                serverless_type=getattr(item, "serverless_type", None),
                 compress_storage_mode=compress_mode,
                 raw_used_storage_gb=raw_used_storage_gb,
                 create_time=item.creation_time,

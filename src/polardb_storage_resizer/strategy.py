@@ -20,6 +20,55 @@ if TYPE_CHECKING:
     from polardb_storage_resizer.models import ClusterDetail
 
 
+# Standard Edition ESSD storage types — excluded from all operations
+# Reference: https://help.aliyun.com/zh/polardb/polardb-for-mysql/user-guide/manually-scale-up-the-storage-capacity-of-a-cluster-1
+STANDARD_EDITION_STORAGE_TYPES = frozenset(
+    {
+        "essdpl0",
+        "essdpl1",
+        "essdpl2",
+        "essdpl3",
+        "essdautopl",
+        "essd_pl0",
+        "essd_pl1",
+        "essd_pl2",
+        "essd_pl3",
+        "essd_autopl",
+    }
+)
+
+
+def _is_standard_edition(cluster: ClusterDetail) -> bool:
+    """Check if a cluster is Standard Edition with ESSD storage.
+
+    Standard Edition clusters use ESSD storage types and are excluded from
+    all operations (expand and shrink) — PolarDB built-in auto-expand handles them.
+
+    Args:
+        cluster: Cluster to check
+
+    Returns:
+        True if cluster is Standard Edition ESSD
+    """
+    if not cluster.storage_type:
+        return False
+    return cluster.storage_type.lower().strip() in STANDARD_EDITION_STORAGE_TYPES
+
+
+def _is_expand_only(cluster: ClusterDetail) -> bool:
+    """Check if a cluster only supports expansion (no shrink).
+
+    Serverless (SENormal) and Multi-master clusters cannot shrink storage.
+
+    Args:
+        cluster: Cluster to check
+
+    Returns:
+        True if cluster only supports expansion
+    """
+    return cluster.category in ("NormalMultimaster", "SENormal")
+
+
 # API constraints
 # Reference: https://api.aliyun.com/document/polardb/2017-08-01/ModifyDBClusterStorageSpace
 STORAGE_STEP_GB = 10  # Storage must be aligned to 10GB
@@ -132,6 +181,7 @@ def select_target_clusters(
     - Must be in configured regions
     - Must match whitelist if configured
     - Must NOT be in blacklist (blacklist takes priority over whitelist)
+    - Standard Edition (Category="Normal") excluded entirely
 
     Args:
         clusters: List of cluster details to filter
@@ -153,6 +203,13 @@ def select_target_clusters(
 
         # Filter by region
         if cluster.region not in config.regions:
+            continue
+
+        # Standard Edition ESSD excluded — PolarDB built-in auto-expand handles them
+        if _is_standard_edition(cluster):
+            logger.debug(
+                "Skipping Standard Edition ESSD cluster %s", cluster.cluster_id
+            )
             continue
 
         # Filter by blacklist (takes priority - exclude if in blacklist)
@@ -201,6 +258,17 @@ def compute_target_storage(
 
     # Guard against zero or negative provisioned storage (data anomaly)
     if current <= 0:
+        return None
+
+    # Block shrink for expand-only cluster types (Serverless, Multi-master)
+    if target < current and _is_expand_only(detail):
+        logger.debug(
+            "Skipping shrink for expand-only cluster %s "
+            "(category=%s, serverless_type=%s)",
+            detail.cluster_id,
+            detail.category,
+            detail.serverless_type,
+        )
         return None
 
     # If target equals current, no change needed (check early for clarity)

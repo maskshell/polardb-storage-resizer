@@ -130,5 +130,49 @@
     "create_time": "2024-01-01T00:00:00Z",
     "last_modify_time": "2024-01-15T00:00:00Z",
     "description": "存储压缩用例: 原始数据 1.09TB, 压缩后 739.83GB, 预置 1.27TB"
+  },
+  {
+    "cluster_id": "pc-std-aaaaaaaaaa",
+    "region": "cn-hangzhou",
+    "cluster_name": "standard-edition-cluster",
+    "status": "Running",
+    "pay_type": "Prepaid",
+    "storage_type": "essdpl1",
+    "used_storage_gb": 80,
+    "provisioned_storage_gb": 100,
+    "category": "Normal",
+    "create_time": "2024-01-01T00:00:00Z",
+    "last_modify_time": "2024-01-15T00:00:00Z",
+    "description": "过滤用例: 标准版 ESSD 集群 (应被完全排除)"
+  },
+  {
+    "cluster_id": "pc-sless-bbbbbbbbbb",
+    "region": "cn-hangzhou",
+    "cluster_name": "serverless-cluster",
+    "status": "Running",
+    "pay_type": "Prepaid",
+    "storage_type": "HighPerformance",
+    "used_storage_gb": 450,
+    "provisioned_storage_gb": 500,
+    "category": "SENormal",
+    "serverless_type": "AgileServerless",
+    "create_time": "2024-01-01T00:00:00Z",
+    "last_modify_time": "2024-01-15T00:00:00Z",
+    "description": "过滤用例: Serverless 集群 (仅允许扩容)"
+  },
+  {
+    "cluster_id": "pc-multi-cccccccccc",
+    "region": "cn-hangzhou",
+    "cluster_name": "multimaster-cluster",
+    "status": "Running",
+    "pay_type": "Prepaid",
+    "storage_type": "HighPerformance",
+    "used_storage_gb": 80,
+    "provisioned_storage_gb": 500,
+    "category": "NormalMultimaster",
+    "serverless_type": "SteadyServerless",
+    "create_time": "2024-01-01T00:00:00Z",
+    "last_modify_time": "2024-01-15T00:00:00Z",
+    "description": "过滤用例: 多主集群 (仅允许扩容, 缩容应被阻止)"
   }
 ]

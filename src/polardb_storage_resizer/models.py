@@ -62,6 +62,13 @@ class ClusterDetail:
             - For compressed clusters: this is the compressed (billing) size
             - For non-compressed clusters: this is the actual data size
         provisioned_storage_gb: Current provisioned storage in GB (B in formula)
+        category: Product series from API, identifies cluster edition:
+            - "Normal": Standard Edition (标准版) — excluded from all operations
+            - "NormalMultimaster": Multi-master (多主集群) — expand only
+            - "SENormal": Serverless — expand only
+            - "Basic", "Archive": other editions
+        serverless_type: Serverless type when applicable:
+            - "AgileServerless", "SteadyServerless", or None
         compress_storage_mode: Storage compression mode
             (e.g., "ON", "OFF", empty if not supported)
         raw_used_storage_gb: Raw (uncompressed) used storage in GB,
@@ -78,6 +85,8 @@ class ClusterDetail:
     storage_type: str
     used_storage_gb: float  # A: Current used storage (compressed if applicable)
     provisioned_storage_gb: int  # B: Current provisioned storage
+    category: str | None = None  # "Normal", "NormalMultimaster", "SENormal", etc.
+    serverless_type: str | None = None  # "AgileServerless", "SteadyServerless", or None
     compress_storage_mode: str | None = None  # "ON", "OFF", or None
     raw_used_storage_gb: float | None = (
         None  # Uncompressed size (only when compression enabled)
