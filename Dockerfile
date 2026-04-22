@@ -21,6 +21,8 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY src/ src/
 
+ENV PYTHONPATH=/app/src
+
 RUN groupadd -r app && useradd -r -g app -d /app -s /sbin/nologin app && \
     mkdir -p /tmp /var/cache/resizer && \
     chown -R app:app /tmp /var/cache/resizer
