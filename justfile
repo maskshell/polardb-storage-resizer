@@ -3,12 +3,13 @@
 # Run all CI checks (mirror of .github/workflows/ci.yml)
 ci: lint test helm-lint
 
-# Lint: ruff check + format check + mypy (mirrors CI lint job)
+# Lint: ruff check + format check + mypy + import-linter (mirrors CI lint job)
 lint:
     uv sync --frozen --all-extras
     uv run ruff check src/ tests/
     uv run ruff format --check src/ tests/
     uv run mypy src/
+    uv run lint-imports --config .importlinter.ini
 
 # Run tests (mirrors CI test job)
 test:

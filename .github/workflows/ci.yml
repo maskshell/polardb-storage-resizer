@@ -31,6 +31,9 @@ jobs:
       - name: Type check
         run: uv run mypy src/
 
+      - name: Architecture contracts
+        run: uv run lint-imports --config .importlinter.ini
+
   test:
     runs-on: ubuntu-latest
     steps:
