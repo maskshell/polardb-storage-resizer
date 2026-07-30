@@ -25,7 +25,7 @@ B_target = ceil(A × buffer_percent / 100)
 
 1. **步长对齐**：目标值必须为 10GB 的整数倍。扩容向上取整，缩容向下取整（避免方向翻转）
 2. **最小存储**：不低于存储类型对应的最小值（参见下表）
-3. **最大存储**：不超过存储类型对应的最大值（参见下表）
+3. **最大存储**：不超过 API 返回的每实例 `StorageMax`；API 未返回时回退到存储类型对应的最大值（参见下表）
 4. **幂等性**：每次 API 调用携带 ClientToken（`MD5(region:cluster_id:new_size_gb)`），同一请求 24 小时内自动去重
 
 ## 快速开始
@@ -395,6 +395,7 @@ src/polardb_storage_resizer/
 ├── errors.py          # 错误类型定义
 ├── executor.py        # 执行器与并发控制
 ├── cloud_client.py    # 云 API 抽象层 (Protocol)
+├── fake_client.py     # Fake 客户端（测试与本地 dry-run）
 ├── logging_setup.py   # 日志配置
 ├── main.py            # CLI 入口
 ├── metrics.py         # 指标收集
@@ -436,6 +437,12 @@ uv run ruff check src/
 
 # 格式化
 uv run ruff format src/
+
+# 类型检查
+uv run mypy src/
+
+# 架构契约（分层：main > executor > strategy > models；决策层不触网）
+uv run lint-imports --config .importlinter.ini
 ```
 
 ## License
