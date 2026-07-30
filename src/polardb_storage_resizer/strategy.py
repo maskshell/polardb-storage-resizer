@@ -20,8 +20,12 @@ if TYPE_CHECKING:
     from polardb_storage_resizer.models import ClusterDetail
 
 
-# Standard Edition ESSD storage types — excluded from all operations
-# Reference: https://help.aliyun.com/zh/polardb/polardb-for-mysql/user-guide/manually-scale-up-the-storage-capacity-of-a-cluster-1
+# Standard Edition ESSD storage types — the SECONDARY Standard-Edition signal.
+# The PRIMARY signal is category == "SENormal" (see _is_standard_edition). Either
+# excludes the cluster. Real DescribeDBClusterAttribute StorageType values seen:
+# "HighPerformance" (Enterprise PSL), "Standard" (Enterprise compressed),
+# "essdpl1" (Standard Edition ESSD PL1) — only the essd* values land in this set.
+# Reference: https://help.aliyun.com/zh/polardb/api-polardb-2017-08-01-describedbclusterattribute
 STANDARD_EDITION_STORAGE_TYPES = frozenset(
     {
         "essdpl0",
@@ -39,17 +43,24 @@ STANDARD_EDITION_STORAGE_TYPES = frozenset(
 
 
 def _is_standard_edition(cluster: ClusterDetail) -> bool:
-    """Check if a cluster is Standard Edition with ESSD storage.
+    """Check if a cluster is Standard Edition (excluded from all operations).
 
-    Standard Edition clusters use ESSD storage types and are excluded from
-    all operations (expand and shrink) — PolarDB built-in auto-expand handles them.
+    Standard Edition uses ESSD storage and is excluded entirely — PolarDB
+    built-in auto-expand handles it. Detection uses TWO complementary signals
+    from DescribeDBClusterAttribute:
+      - PRIMARY:   category == "SENormal" (docs: SENormal = 标准版)
+      - SECONDARY: storage_type in STANDARD_EDITION_STORAGE_TYPES (e.g. "essdpl1")
+    Either signal excludes the cluster; the dual check is robust to either
+    field being absent or labelled differently.
 
     Args:
         cluster: Cluster to check
 
     Returns:
-        True if cluster is Standard Edition ESSD
+        True if cluster is Standard Edition
     """
+    if cluster.category == "SENormal":
+        return True
     if not cluster.storage_type:
         return False
     return cluster.storage_type.lower().strip() in STANDARD_EDITION_STORAGE_TYPES
@@ -58,7 +69,12 @@ def _is_standard_edition(cluster: ClusterDetail) -> bool:
 def _is_expand_only(cluster: ClusterDetail) -> bool:
     """Check if a cluster only supports expansion (no shrink).
 
-    Serverless (SENormal) and Multi-master clusters cannot shrink storage.
+    Multi-master (NormalMultimaster) clusters cannot shrink storage. Standard
+    Edition (SENormal) is excluded upstream by _is_standard_edition, so it is
+    intentionally NOT treated as expand-only here.
+
+    serverless_type is NOT consulted: a serverless Enterprise cluster on PSL
+    storage can still shrink, so serverless never implies expand-only.
 
     Args:
         cluster: Cluster to check
@@ -66,7 +82,7 @@ def _is_expand_only(cluster: ClusterDetail) -> bool:
     Returns:
         True if cluster only supports expansion
     """
-    return cluster.category in ("NormalMultimaster", "SENormal")
+    return cluster.category == "NormalMultimaster"
 
 
 # API constraints
@@ -84,7 +100,10 @@ STORAGE_STEP_GB = 10  # Storage must be aligned to 10GB
 #   - Enterprise actual max depends on node spec; API rejects if exceeded
 # Note: StorageType from DescribeDBClusterAttribute API is typically lowercase
 STORAGE_TYPE_MIN_GB: dict[str, int] = {
-    # Enterprise edition (PSL)
+    # Enterprise edition — real API StorageType labels (PSL/compressed)
+    "highperformance": 10,
+    "standard": 10,
+    # Enterprise edition (PSL) — legacy/granular labels
     "psl5": 10,
     "psl4": 10,
     # Standard edition (ESSD)
@@ -109,6 +128,11 @@ DEFAULT_MIN_STORAGE_GB = 20
 # Note: Enterprise edition actual max depends on node spec (100TB~500TB);
 # using product-level max (500TB) here — API rejects if node spec is lower.
 STORAGE_TYPE_MAX_GB: dict[str, int] = {
+    # Enterprise edition — real API StorageType labels. Observed per-spec
+    # StorageMax ~102400GB (100TB); 100000 used as a conservative table fallback
+    # (the live StorageMax field is authoritative — see effective_max_storage_gb).
+    "highperformance": 100000,
+    "standard": 100000,
     # Enterprise edition (PSL): up to 500000GB (500TB)
     "psl5": 500000,
     "psl4": 500000,
@@ -168,6 +192,22 @@ def get_max_storage_gb(storage_type: str | None) -> int:
     return STORAGE_TYPE_MAX_GB.get(normalized, DEFAULT_MAX_STORAGE_GB)
 
 
+def effective_max_storage_gb(detail: ClusterDetail) -> int:
+    """Per-cluster storage ceiling, preferring the live API value.
+
+    The authoritative max is the per-cluster ``StorageMax`` from
+    DescribeDBClusterAttribute (observed ~102400GB / 100TB for Enterprise,
+    ~65500GB for Standard Edition). When the API did not return it
+    (``detail.storage_max_gb`` is falsy), fall back to the static
+    STORAGE_TYPE_MAX_GB table keyed by storage_type. Used in BOTH
+    compute_target_storage and validate_storage_constraints so the cap is
+    enforced symmetrically (previously only compute applied it).
+    """
+    if detail.storage_max_gb:
+        return detail.storage_max_gb
+    return get_max_storage_gb(detail.storage_type)
+
+
 def select_target_clusters(
     clusters: list[ClusterDetail],
     config: AppConfig,
@@ -181,7 +221,9 @@ def select_target_clusters(
     - Must be in configured regions
     - Must match whitelist if configured
     - Must NOT be in blacklist (blacklist takes priority over whitelist)
-    - Standard Edition (Category="Normal") excluded entirely
+    - Standard Edition ESSD (storage_type ∈ ESSD set) excluded entirely.
+      Note: Category="Normal" is Enterprise (企业版), the primary target for
+      expand+shrink — NOT Standard Edition.
 
     Args:
         clusters: List of cluster details to filter
@@ -205,10 +247,14 @@ def select_target_clusters(
         if cluster.region not in config.regions:
             continue
 
-        # Standard Edition ESSD excluded — PolarDB built-in auto-expand handles them
+        # Standard Edition excluded — PolarDB built-in auto-expand handles them.
+        # Detection is dual-signal (category=SENormal OR storage_type ∈ ESSD).
         if _is_standard_edition(cluster):
             logger.debug(
-                "Skipping Standard Edition ESSD cluster %s", cluster.cluster_id
+                "Skipping Standard Edition cluster %s (category=%s, storage_type=%s)",
+                cluster.cluster_id,
+                cluster.category,
+                cluster.storage_type,
             )
             continue
 
@@ -260,7 +306,8 @@ def compute_target_storage(
     if current <= 0:
         return None
 
-    # Block shrink for expand-only cluster types (Serverless, Multi-master)
+    # Block shrink for expand-only cluster types (Multi-master only; a serverless
+    # Enterprise cluster on PSL storage can still shrink — see _is_expand_only).
     if target < current and _is_expand_only(detail):
         logger.debug(
             "Skipping shrink for expand-only cluster %s "
@@ -307,9 +354,8 @@ def compute_target_storage(
         if change_gb > config.max_single_change_gb:
             target = current - config.max_single_change_gb
 
-    # Enforce per-type maximum storage limit (API hard limit)
-    max_storage_gb = get_max_storage_gb(detail.storage_type)
-    target = min(target, max_storage_gb)
+    # Enforce per-cluster maximum storage (live StorageMax preferred, else table)
+    target = min(target, effective_max_storage_gb(detail))
 
     # After all caps applied, check if change meets threshold
     change_gb = abs(target - current)
@@ -385,6 +431,12 @@ def validate_storage_constraints(
             # After round-down, verify cap still holds
             if current - result > max_change:
                 return None
+
+    # Enforce per-cluster maximum storage (live StorageMax preferred, else table).
+    # Placed BEFORE the no-op / threshold checks so a cap that pulls the result
+    # down to current (or under threshold) still exits with None rather than
+    # returning a no-op target.
+    result = min(result, effective_max_storage_gb(detail))
 
     # After alignment, check if there's actually a change needed
     # This handles cases where alignment rounds up to current value

@@ -271,9 +271,16 @@ class AliyunPolarDBClient:
             else:
                 provisioned_storage_gb = 0
 
-            # Get actual storage engine type (e.g., "PSSD", "PL0", "PL1", etc.)
-            # for min-storage enforcement in strategy layer.
-            # Fall back to pay_type-derived value only if API field is absent.
+            # Per-cluster storage ceiling from API StorageMax (bytes -> GB).
+            # Authoritative max for the strategy layer; None when the API omits it.
+            storage_max_gb: int | None = None
+            if hasattr(item, "storage_max") and item.storage_max:
+                storage_max_gb = int(item.storage_max / (1024**3))
+
+            # StorageType from the API. Real observed values: "HighPerformance"
+            # (Enterprise PSL), "Standard" (Enterprise compressed), "essdpl1"
+            # (Standard Edition ESSD). Fall back to a pay_type-derived label only
+            # when the API field is absent (legacy/edge cases).
             storage_type = getattr(item, "storage_type", None)
             if not storage_type:
                 storage_type = (
@@ -291,6 +298,7 @@ class AliyunPolarDBClient:
                 storage_type=storage_type,
                 used_storage_gb=used_storage_gb,
                 provisioned_storage_gb=provisioned_storage_gb,
+                storage_max_gb=storage_max_gb,
                 category=getattr(item, "category", None),
                 serverless_type=getattr(item, "serverless_type", None),
                 compress_storage_mode=compress_mode,

@@ -67,3 +67,8 @@ Thumbs.db
 
 # Cursor IDE
 #.cursor/
+.claude/parallel-dev/loop-state.json
+.claude/parallel-dev/runs/
+.env.solidforge
+!.env.example
+!.env.solidforge.example

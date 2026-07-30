@@ -18,6 +18,9 @@ from typing import Any
 import pytest
 from freezegun import freeze_time
 
+# Import FakePolarDBClient for type hints in tests
+from polardb_storage_resizer.aliyun_client import AliyunPolarDBClient
+
 # Import from actual implementation
 from polardb_storage_resizer.cloud_client import (
     PolarDBClient,
@@ -27,8 +30,6 @@ from polardb_storage_resizer.errors import (
     PermanentCloudAPIError,
     TransientCloudAPIError,
 )
-
-# Import FakePolarDBClient for type hints in tests
 from polardb_storage_resizer.fake_client import FakePolarDBClient
 
 # ==============================================================================
@@ -632,6 +633,97 @@ class TestTagFiltersAPIFormat:
         # Empty dict should result in no Tag parameter being sent to API
         # (not an empty list)
         assert len(tag_filters) == 0
+
+
+class TestAliyunClientStorageMaxParsing:
+    """Unit tests for StorageMax -> storage_max_gb parsing in get_cluster_detail.
+
+    Stubs the SDK describe_dbcluster_attribute response so the byte->GB parse is
+    verifiable without network or credentials (DoD for iteration ser-2).
+    """
+
+    @staticmethod
+    def _client_with_body(body: Any) -> AliyunPolarDBClient:
+        """Build an AliyunPolarDBClient whose SDK client returns `body`.
+
+        Bypasses __init__ (no credential provider) and pre-seeds _clients so
+        _get_client returns the stub without touching the network.
+        """
+        import threading
+
+        client = AliyunPolarDBClient.__new__(AliyunPolarDBClient)
+        client._cred_client = None
+        client._clients_lock = threading.Lock()
+        client._connect_timeout = 5000
+        client._read_timeout = 30000
+        client._clients = {"cn-hangzhou": _StubSDKClient(body)}
+        return client
+
+    def test_storage_max_present_converted_to_gb(self) -> None:
+        """storage_max (bytes) is converted to GiB GB."""
+        # 102400 GiB expressed in bytes (= 100 TiB, the observed enterprise value)
+        storage_max_bytes = 102400 * (1024**3)
+        body = _make_attribute_body(storage_max=storage_max_bytes)
+        client = self._client_with_body(body)
+        detail = client.get_cluster_detail("cn-hangzhou", "pc-test")
+        assert detail.storage_max_gb == 102400
+
+    def test_storage_max_zero_yields_none(self) -> None:
+        """A falsy storage_max (0) yields None (no authoritative ceiling)."""
+        body = _make_attribute_body(storage_max=0)
+        client = self._client_with_body(body)
+        detail = client.get_cluster_detail("cn-hangzhou", "pc-test")
+        assert detail.storage_max_gb is None
+
+    def test_storage_max_absent_yields_none(self) -> None:
+        """A missing storage_max attribute yields None."""
+        body = _make_attribute_body(storage_max=None)
+        client = self._client_with_body(body)
+        detail = client.get_cluster_detail("cn-hangzhou", "pc-test")
+        assert detail.storage_max_gb is None
+
+
+# ==============================================================================
+# Helpers: stub SDK response objects
+# ==============================================================================
+
+
+def _make_attribute_body(storage_max: int | None) -> Any:
+    """Build a stub DescribeDBClusterAttribute response body.
+
+    `storage_max=None` OMITS the attribute (simulating an API that did not
+    return it); an integer sets it (0 is falsy -> parsed as absent).
+    """
+    from types import SimpleNamespace
+
+    fields = {
+        "dbcluster_id": "pc-test",
+        "dbcluster_description": "test",
+        "dbcluster_status": "Running",
+        "pay_type": "Prepaid",
+        "storage_type": "HighPerformance",
+        "storage_space": 200 * (1024**3),
+        "storage_used": 100 * (1024**3),
+        "compress_storage_mode": "OFF",
+        "category": "Normal",
+        "serverless_type": None,
+        "creation_time": "2024-01-01T00:00:00Z",
+    }
+    if storage_max is not None:
+        fields["storage_max"] = storage_max
+    return SimpleNamespace(**fields)
+
+
+class _StubSDKClient:
+    """Minimal SDK client stub returning a canned describe response."""
+
+    def __init__(self, body: Any) -> None:
+        self._body = body
+
+    def describe_dbcluster_attribute(self, request: Any) -> Any:
+        from types import SimpleNamespace
+
+        return SimpleNamespace(status_code=200, body=self._body)
 
 
 # ==============================================================================

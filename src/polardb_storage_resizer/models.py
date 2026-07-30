@@ -54,21 +54,31 @@ class ClusterDetail:
         cluster_name: Human-readable cluster name
         status: Current cluster status
         pay_type: Payment type ("Prepaid" or "Postpaid")
-        storage_type: Storage type from API, determines min/max storage limits:
-            - Enterprise: "psl5", "psl4" (min 10GB)
-            - Standard: "essdpl0", "essdpl1" (min 20GB), "essdpl2" (min 470GB),
-              "essdpl3" (min 1270GB), "essdautopl" (min 40GB)
+        storage_type: Storage type from DescribeDBClusterAttribute. Real values
+            observed: "HighPerformance" (Enterprise PSL), "Standard" (Enterprise
+            compressed/通用云盘), "essdpl1" (Standard Edition ESSD PL1). Used for
+            min/max lookups (with static-table fallback) and as the SECONDARY
+            Standard-Edition signal. NOT a reliable edition discriminator on its own.
         used_storage_gb: Current used storage in GB (A in formula)
             - For compressed clusters: this is the compressed (billing) size
             - For non-compressed clusters: this is the actual data size
         provisioned_storage_gb: Current provisioned storage in GB (B in formula)
-        category: Product series from API, identifies cluster edition:
-            - "Normal": Standard Edition (标准版) — excluded from all operations
-            - "NormalMultimaster": Multi-master (多主集群) — expand only
-            - "SENormal": Serverless — expand only
-            - "Basic", "Archive": other editions
-        serverless_type: Serverless type when applicable:
-            - "AgileServerless", "SteadyServerless", or None
+        storage_max_gb: Per-cluster storage ceiling from API StorageMax
+            (byte->GB). Authoritative max; when None the strategy falls back to
+            the static STORAGE_TYPE_MAX_GB table. Observed ~102400GB (100TB) for
+            Enterprise, ~65500GB for Standard Edition.
+        category: Product series from API — the PRIMARY edition discriminator:
+            - "Normal": Enterprise (企业版/集群版) — primary target, supports BOTH
+              expand and shrink (regardless of serverless_type).
+            - "NormalMultimaster": Multi-master (多主集群) — expand only (shrink
+              blocked).
+            - "SENormal": Standard Edition (标准版) — excluded entirely at select
+              (PolarDB built-in auto-expand handles ESSD). NOT "Serverless".
+            - "Basic", "Archive": other editions.
+        serverless_type: Serverless compute spec — "AgileServerless",
+            "SteadyServerless", or None. ORTHOGONAL to edition and to shrink
+            capability: a serverless Enterprise cluster on PSL storage can still
+            shrink. Never read by any resize decision (logged only).
         compress_storage_mode: Storage compression mode
             (e.g., "ON", "OFF", empty if not supported)
         raw_used_storage_gb: Raw (uncompressed) used storage in GB,
@@ -85,6 +95,9 @@ class ClusterDetail:
     storage_type: str
     used_storage_gb: float  # A: Current used storage (compressed if applicable)
     provisioned_storage_gb: int  # B: Current provisioned storage
+    storage_max_gb: int | None = (
+        None  # Per-cluster max from API StorageMax (byte->GB); None when absent
+    )
     category: str | None = None  # "Normal", "NormalMultimaster", "SENormal", etc.
     serverless_type: str | None = None  # "AgileServerless", "SteadyServerless", or None
     compress_storage_mode: str | None = None  # "ON", "OFF", or None

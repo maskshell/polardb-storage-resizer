@@ -104,6 +104,7 @@ def cluster_data_to_detail(cluster_data: dict[str, Any]) -> ClusterDetail:
         storage_type=cluster_data["storage_type"],
         used_storage_gb=cluster_data["used_storage_gb"],
         provisioned_storage_gb=cluster_data["provisioned_storage_gb"],
+        storage_max_gb=cluster_data.get("storage_max_gb"),
         category=cluster_data.get("category"),
         serverless_type=cluster_data.get("serverless_type"),
         compress_storage_mode=cluster_data.get("compress_storage_mode"),

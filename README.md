@@ -186,7 +186,7 @@ cluster_tag_filters:  # 标签筛选：仅处理具有所有指定标签的集�
 1. **计费类型**：包年包月（Prepaid）
 2. **运行状态**：运行中（Running）
 3. **区域**：在配置的 REGIONS 列表中
-4. **集群类型**：标准版 ESSD 集群硬编码排除（所有操作包括扩容和缩容）
+4. **集群类型**：标准版集群排除（`category="SENormal"` 或 ESSD 存储；所有操作包括扩容和缩容）
 5. **黑名单**：如果配置了 CLUSTER_BLACKLIST，则排除黑名单内的集群
 6. **白名单**：如果配置了 CLUSTER_WHITELIST，则仅处理白名单内的集群（黑名单优先级更高）
 
@@ -196,15 +196,15 @@ cluster_tag_filters:  # 标签筛选：仅处理具有所有指定标签的集�
 
 | 集群类型 | API 识别 | 操作 | 原因 |
 | --- | --- | --- | --- |
-| **企业版** | `category="Normal"`, PSL 存储 | 扩容 + 缩容 | 主要处理对象 |
-| **标准版 ESSD** | `storage_type` ∈ ESSD 集合 | 全部排除 | 缩容需数据迁移（150MB/s），扩容由 PolarDB 自带自动扩容处理 |
+| **企业版** | `category="Normal"`（PSL 存储 `HighPerformance`/`Standard`） | 扩容 + 缩容 | 主要处理对象；serverless 规格（`SteadyServerless` 等）不影响缩容 |
+| **标准版** | `category="SENormal"` 或 `storage_type` ∈ ESSD 集合 | 全部排除 | PolarDB 自带自动扩容处理 ESSD |
 | **多主集群** | `category="NormalMultimaster"` | 仅扩容 | 不支持存储缩容 |
-| **Serverless** | `category="SENormal"` | 仅扩容 | 不支持存储缩容 |
 
 识别规则：
-- **标准版**：通过 `DescribeDBClusterAttribute` 返回的 `StorageType` 判断，ESSD 类型（`essdpl0`/`essdpl1`/`essdpl2`/`essdpl3`/`essdautopl`）即为标准版
-- **多主集群 / Serverless**：通过 `Category` 字段判断
-- `serverless_type` 字段（如 `SteadyServerless`）为企业版代理特性，不影响集群类型判定
+
+- **标准版**：以 `Category == "SENormal"` 为主信号（API 文档：SENormal=标准版），`storage_type` ∈ ESSD 集合（`essdpl0`/`essdpl1`/`essdpl2`/`essdpl3`/`essdautopl`）为次信号；任一命中即排除
+- **多主集群**：`Category == "NormalMultimaster"` → 仅扩容
+- `serverless_type`（`AgileServerless`/`SteadyServerless`）是企业版计算规格，与版本/缩容判定无关；PSL 存储的企业版集群（含 serverless）可正常缩容
 
 ## 安全机制
 
@@ -233,11 +233,13 @@ cluster_tag_filters:  # 标签筛选：仅处理具有所有指定标签的集�
 
 ### 存储类型限制
 
-PolarDB 的存储限制与集群的存储类型相关，程序自动根据 `DescribeDBClusterAttribute` 返回的 `StorageType` 应用对应的最小值和最大值：
+PolarDB 的存储限制与集群的存储类型相关。程序优先使用 `DescribeDBClusterAttribute` 返回的每实例 `StorageMax` 作为存储上限（实测企业盘 102400GB/100TB），仅在 API 未返回时回退到下表静态值；最小值按存储类型查表：
 
-| 存储类型 | 最小存储 | 最大存储 | 说明 |
+| 存储类型 | 最小存储 | 最大存储（兜底） | 说明 |
 | --- | --- | --- | --- |
-| `psl5` / `psl4` | 10 GB | 500 TB | 企业版。实际最大取决于节点规格（100TB~500TB），超出时 API 拒绝变更 |
+| `HighPerformance` | 10 GB | 以 API `StorageMax` 为准 | 企业版 PSL（主要存储类型） |
+| `Standard` | 10 GB | 以 API `StorageMax` 为准 | 企业版压缩盘/通用云盘 |
+| `psl5` / `psl4` | 10 GB | 500 TB | 企业版 PSL（细粒度标签，兜底） |
 | `essdpl0` | 20 GB | 32 TB | 标准版 ESSD PL0 |
 | `essdpl1` / `essdpl2` / `essdpl3` | 20/470/1270 GB | 64 TB | 标准版 ESSD PL1/PL2/PL3 |
 | `essdautopl` | 40 GB | 64 TB | 标准版 ESSD 通用云盘 |

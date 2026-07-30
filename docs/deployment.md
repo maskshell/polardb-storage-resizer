@@ -497,10 +497,11 @@ env:
 
 ### 4. 存储类型限制
 
-程序会根据集群的存储类型自动应用对应的最小和最大存储限制：
+程序优先使用 `DescribeDBClusterAttribute` 返回的每实例 `StorageMax` 作为存储上限（实测企业盘 102400GB/100TB），仅在 API 未返回时回退到下表静态值；最小值按存储类型查表：
 
-| 存储类型 | 最小存储 | 最大存储 |
+| 存储类型 | 最小存储 | 最大存储（兜底） |
 | --- | --- | --- |
+| `HighPerformance` / `Standard` | 10 GB | 以 API `StorageMax` 为准 |
 | `psl5` / `psl4` | 10 GB | 500 TB |
 | `essdpl0` | 20 GB | 32 TB |
 | `essdpl1` / `essdpl2` / `essdpl3` / `essdautopl` | 20/470/1270/40 GB | 64 TB |
@@ -516,15 +517,14 @@ env:
 
 | 集群类型 | 识别方式 | 操作 | 说明 |
 | --- | --- | --- | --- |
-| 企业版 | `category="Normal"`, PSL 存储 | 扩容 + 缩容 | 主要处理对象 |
-| 标准版 ESSD | `storage_type` 为 ESSD 类型 | 全部排除 | 缩容需数据迁移，扩容由 PolarDB 自动扩容处理 |
+| 企业版 | `category="Normal"`（PSL 存储 `HighPerformance`/`Standard`） | 扩容 + 缩容 | 主要处理对象；serverless 规格不影响缩容 |
+| 标准版 | `category="SENormal"` 或 `storage_type` 为 ESSD 类型 | 全部排除 | PolarDB 自动扩容处理 ESSD |
 | 多主集群 | `category="NormalMultimaster"` | 仅扩容 | 不支持缩容 |
-| Serverless | `category="SENormal"` | 仅扩容 | 不支持缩容 |
 
 排除/限制发生在两个阶段：
 
-- **筛选阶段**（`select_target_clusters`）：标准版 ESSD 集群被完全排除
-- **计划阶段**（`compute_target_storage`）：多主集群和 Serverless 集群的缩容计划被阻止
+- **筛选阶段**（`select_target_clusters`）：标准版集群（`category="SENormal"` 或 ESSD 存储）被完全排除
+- **计划阶段**（`compute_target_storage`）：多主集群的缩容计划被阻止（serverless 规格不阻断 PSL 缩容）
 
 ### 5. 先 dry-run 后 apply
 

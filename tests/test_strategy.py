@@ -20,7 +20,9 @@ from polardb_storage_resizer.config import AppConfig
 from polardb_storage_resizer.models import ClusterDetail
 from polardb_storage_resizer.strategy import (
     compute_target_storage,
+    effective_max_storage_gb,
     get_max_storage_gb,
+    get_min_storage_gb,
     select_target_clusters,
     validate_storage_constraints,
 )
@@ -114,16 +116,23 @@ class TestSelectTargetClusters:
         """Empty whitelist should select all eligible clusters."""
         result = select_target_clusters(sample_clusters, sample_config)
 
-        # Should include all prepaid, running, non-Standard-Edition-ESSD clusters
+        # Eligible = prepaid, running, and NOT Standard Edition. Standard Edition
+        # is detected by EITHER signal — category == "SENormal" OR storage_type in
+        # the ESSD set — mirroring _is_standard_edition exactly.
         from polardb_storage_resizer.strategy import STANDARD_EDITION_STORAGE_TYPES
+
+        def _is_std(c: ClusterDetail) -> bool:
+            if c.category == "SENormal":
+                return True
+            return (c.storage_type or "").lower().strip() in (
+                STANDARD_EDITION_STORAGE_TYPES
+            )
 
         expected_count = len(
             [
                 c
                 for c in sample_clusters
-                if c.pay_type == "Prepaid"
-                and c.status == "Running"
-                and c.storage_type.lower().strip() not in STANDARD_EDITION_STORAGE_TYPES
+                if c.pay_type == "Prepaid" and c.status == "Running" and not _is_std(c)
             ]
         )
         assert len(result) == expected_count
@@ -485,6 +494,62 @@ class TestMaxStorageLimits:
         assert get_max_storage_gb("unknown_type") == 32000
         assert get_max_storage_gb(None) == 32000
 
+    def test_effective_max_prefers_cluster_storage_max(self) -> None:
+        """effective_max_storage_gb returns the live per-cluster StorageMax when set."""
+        cluster = ClusterDetail(
+            cluster_id="pc-max",
+            region="cn-hangzhou",
+            cluster_name="max",
+            status="Running",
+            pay_type="Prepaid",
+            storage_type="HighPerformance",
+            used_storage_gb=100,
+            provisioned_storage_gb=200,
+            storage_max_gb=102400,  # live API value (100TB), not a table literal
+        )
+        assert effective_max_storage_gb(cluster) == 102400
+
+    def test_effective_max_falls_back_to_table_when_absent(self) -> None:
+        """When storage_max_gb is None, fall back to the storage_type table."""
+        cluster = ClusterDetail(
+            cluster_id="pc-nomax",
+            region="cn-hangzhou",
+            cluster_name="nomax",
+            status="Running",
+            pay_type="Prepaid",
+            storage_type="HighPerformance",
+            used_storage_gb=100,
+            provisioned_storage_gb=200,
+            storage_max_gb=None,
+        )
+        # Derived from the table via get_max_storage_gb, not a hardcoded literal.
+        assert effective_max_storage_gb(cluster) == get_max_storage_gb(
+            "HighPerformance"
+        )
+
+    def test_storage_max_gb_caps_target_below_table_max(self) -> None:
+        """Live per-cluster storage_max_gb caps expansion below the static table max."""
+        cluster = ClusterDetail(
+            cluster_id="pc-capped",
+            region="cn-hangzhou",
+            cluster_name="capped",
+            status="Running",
+            pay_type="Prepaid",
+            storage_type="HighPerformance",  # table max 100000
+            used_storage_gb=290,
+            provisioned_storage_gb=200,
+            storage_max_gb=300,  # live ceiling well below table max
+        )
+        config = AppConfig(
+            run_mode="dry-run",
+            regions=["cn-hangzhou"],
+            max_expand_ratio=2.0,
+            max_single_change_gb=10000,
+        )
+        # ceil(290 * 1.05) = 305 > storage_max_gb 300 -> capped to 300 (not 100000)
+        result = compute_target_storage(cluster, config)
+        assert result == 300
+
 
 class TestValidateStorageConstraints:
     """Tests for API constraint validation."""
@@ -574,6 +639,45 @@ class TestValidateStorageConstraints:
 
         # Should be at least 10GB for PSL4
         assert result >= 10
+
+    def test_minimum_storage_highperformance(self, sample_config: AppConfig) -> None:
+        """HighPerformance (Enterprise PSL) minimum storage is 10GB."""
+        cluster = ClusterDetail(
+            cluster_id="pc-hp",
+            region="cn-hangzhou",
+            cluster_name="hp-test",
+            status="Running",
+            pay_type="Prepaid",
+            storage_type="HighPerformance",
+            used_storage_gb=1,
+            provisioned_storage_gb=100,
+        )
+
+        target = 5  # Below HighPerformance minimum
+        result = validate_storage_constraints(target, cluster, sample_config)
+        # Derived from the table (single source of truth), not a hardcoded literal.
+        assert result >= get_min_storage_gb("HighPerformance")
+
+    def test_minimum_storage_standard_compressed(
+        self, sample_config: AppConfig
+    ) -> None:
+        """Standard (Enterprise compressed/通用云盘) minimum storage is 10GB."""
+        cluster = ClusterDetail(
+            cluster_id="pc-std-disk",
+            region="cn-hangzhou",
+            cluster_name="std-disk-test",
+            status="Running",
+            pay_type="Prepaid",
+            storage_type="Standard",
+            used_storage_gb=1,
+            provisioned_storage_gb=100,
+            compress_storage_mode="ON",
+        )
+
+        target = 5  # Below Standard minimum
+        result = validate_storage_constraints(target, cluster, sample_config)
+        # Derived from the table (single source of truth), not a hardcoded literal.
+        assert result >= get_min_storage_gb("Standard")
 
     def test_minimum_storage_essd_pl2(self) -> None:
         """ESSD PL2 minimum storage is 470GB."""
@@ -946,14 +1050,14 @@ class TestClusterTypeFiltering:
         result = select_target_clusters([cluster], config)
         assert len(result) == 1
 
-    def test_serverless_cluster_selected_but_shrink_blocked(
+    def test_standard_edition_senormal_essd_excluded(
         self,
     ) -> None:
-        """Serverless (SENormal) clusters should be selected but shrink blocked."""
+        """Standard Edition (category=SENormal, ESSD storage) is excluded entirely."""
         cluster = ClusterDetail(
             cluster_id="pc-sless",
             region="cn-hangzhou",
-            cluster_name="serverless",
+            cluster_name="standard-edition",
             status="Running",
             pay_type="Prepaid",
             storage_type="essdpl1",
@@ -970,21 +1074,26 @@ class TestClusterTypeFiltering:
             max_single_change_gb=2000,
         )
 
-        # Should NOT be selected (ESSD storage = Standard Edition, excluded)
+        # Both signals fire (SENormal + ESSD) -> excluded at selection.
         selected = select_target_clusters([cluster], config)
         assert selected == []
 
-    def test_serverless_psl_expand_allowed(
+    def test_standard_edition_by_category_highperformance_excluded(
         self,
     ) -> None:
-        """Serverless cluster with PSL storage should allow expansion."""
+        """Standard Edition detected via category=SENormal even with non-ESSD storage.
+
+        PRIMARY category signal excludes the cluster even though storage_type
+        (HighPerformance) is not in the ESSD set — the old storage_type-only
+        check would have wrongly admitted it.
+        """
         cluster = ClusterDetail(
-            cluster_id="pc-sless-psl",
+            cluster_id="pc-sless-hp",
             region="cn-hangzhou",
-            cluster_name="serverless-psl",
+            cluster_name="standard-by-category",
             status="Running",
             pay_type="Prepaid",
-            storage_type="psl4",
+            storage_type="HighPerformance",
             used_storage_gb=450,
             provisioned_storage_gb=400,
             category="SENormal",
@@ -992,24 +1101,29 @@ class TestClusterTypeFiltering:
 
         config = AppConfig(run_mode="dry-run", regions=["cn-hangzhou"])
 
-        result = compute_target_storage(cluster, config)
-        assert result is not None
-        assert result > cluster.provisioned_storage_gb
+        assert select_target_clusters([cluster], config) == []
 
-    def test_serverless_psl_shrink_blocked(
+    def test_serverless_enterprise_psl_shrink_allowed(
         self,
     ) -> None:
-        """Serverless cluster (SENormal) with PSL storage should block shrink."""
+        """A serverless Enterprise cluster on PSL storage CAN shrink.
+
+        User-confirmed rule: serverless nodes may attach to Enterprise clusters,
+        and a pure-serverless PSL cluster has no shrink restriction. So an
+        Enterprise (category=Normal) serverless cluster shrinks normally —
+        serverless_type never blocks shrink.
+        """
         cluster = ClusterDetail(
-            cluster_id="pc-sless-psl",
+            cluster_id="pc-sless-enterprise",
             region="cn-hangzhou",
-            cluster_name="serverless-psl",
+            cluster_name="serverless-enterprise",
             status="Running",
             pay_type="Prepaid",
-            storage_type="psl4",
+            storage_type="HighPerformance",
             used_storage_gb=50,
             provisioned_storage_gb=500,
-            category="SENormal",
+            category="Normal",
+            serverless_type="AgileServerless",
         )
 
         config = AppConfig(
@@ -1020,7 +1134,8 @@ class TestClusterTypeFiltering:
         )
 
         result = compute_target_storage(cluster, config)
-        assert result is None
+        assert result is not None
+        assert result < cluster.provisioned_storage_gb
 
     def test_multimaster_cluster_selected_but_shrink_blocked(
         self,
@@ -1139,12 +1254,16 @@ class TestClusterTypeFiltering:
         sample_clusters: list[ClusterDetail],
         sample_config: AppConfig,
     ) -> None:
-        """Standard Edition ESSD clusters in sample data should be filtered out."""
+        """Standard Edition clusters (by category OR ESSD storage) are filtered out."""
+        from polardb_storage_resizer.strategy import STANDARD_EDITION_STORAGE_TYPES
+
         result = select_target_clusters(sample_clusters, sample_config)
 
         for cluster in result:
-            storage_type = cluster.storage_type.lower().strip()
-            assert not storage_type.startswith("essd"), (
-                f"Standard Edition ESSD cluster {cluster.cluster_id} "
-                f"should be filtered out"
+            is_std = cluster.category == "SENormal" or (
+                (cluster.storage_type or "").lower().strip()
+                in STANDARD_EDITION_STORAGE_TYPES
+            )
+            assert not is_std, (
+                f"Standard Edition cluster {cluster.cluster_id} should be filtered out"
             )
